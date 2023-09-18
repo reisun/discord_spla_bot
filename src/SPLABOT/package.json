@@ -1,0 +1,17 @@
+{
+  "name": "discord_spla_bot",
+  "version": "1.0.0",
+  "description": "bot assists spla game in discord.",
+  "author": "ryuichi nishikawa <>",
+  "main": "main.js",
+  "private": true,
+  "scripts": {
+    "test": "ts-node src/app.ts",
+    "start": "node dist/app.js",
+    "compile": "tsc -p ."
+  },
+  "dependencies": {
+    "discord.js": "^14.13.0",
+    "typescript": "^5.2.2"
+  }
+}

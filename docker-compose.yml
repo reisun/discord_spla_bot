@@ -1,0 +1,7 @@
+﻿version: '2'
+services:
+  discord_spla_bot:
+    build: ./docker/discord_spla_bot
+    volumes:
+      - ./src/SPLABOT/:/home/SPLABOT
+    tty: true
