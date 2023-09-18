@@ -67,7 +67,6 @@ GMをやめないうちは、別のモードのコマンドは使えません。
 ## 開発環境構築
 
 ### dockerの起動
-    cd {ルートディレクトリ}
     docker-compose up -d --build
 
 ### dockerコンテナに入る
