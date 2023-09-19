@@ -6,12 +6,14 @@
   "main": "main.js",
   "private": true,
   "scripts": {
-    "test": "ts-node src/app.ts",
-    "start": "node dist/app.js",
+    "test": "ts-node src/app/app.ts",
+    "start": "node dist/app/app.js",
     "compile": "tsc -p ."
   },
   "dependencies": {
+    "@types/mongodb": "^4.0.7",
     "discord.js": "^14.13.0",
+    "mongodb": "^6.1.0",
     "typescript": "^5.2.2"
   }
 }

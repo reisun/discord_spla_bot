@@ -76,6 +76,9 @@ GMをやめないうちは、別のモードのコマンドは使えません。
     cd /home/SPLABOT
     npm i
 
+### typescriptのビルド
+    npm run compile
+
 ### botの起動
-    node app.js
+    npm run start
 
