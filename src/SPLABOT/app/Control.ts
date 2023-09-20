@@ -13,7 +13,14 @@ const eSendType = {
 }
 type eSendType = (typeof eSendType)[keyof typeof eSendType];
 
+const MySuccess = "success";
+type MySuccess = "success";
+const MyError = "error";
+type MyError = "error";
+type ResultStatus = MySuccess | MyError;
+
 interface MyResult {
+    status: ResultStatus,
     sendList: {
         type: eSendType,
         userId: string,
@@ -82,15 +89,21 @@ export class Controller {
             id: message.author.id,
             name: message.author.displayName,
         }
+        let mentionUsers: MyUser[] = message.mentions.users.map(itr => {
+            return {
+                id: itr.id,
+                name: itr.displayName,
+            }
+        });
 
         let result: MyResult;
         switch (analyser.command) {
             case eCommands.SplaJinroStart:
                 result = await this.startGM(isDM, sender);
                 break;
-            // case eCommands.Member:
-            //     result = prosessMember(argsObj);
-            //     break;
+            case eCommands.Member:
+                result = await this.changeMember(isDM, sender, mentionUsers);
+                break;
             // case eCommands.RolePlan:
             //     result = prosessPolePlan(argsObj);
             //     break;
@@ -105,24 +118,26 @@ export class Controller {
                 break;
             default:
                 result = {
+                    status: MySuccess,
                     sendList: [],
                 };
                 break;
         }
-
-        result.sendList.forEach(sendObj => {
+        // 順番に送信する前提で格納されている場合もあるので
+        // 送信ごとに待機する
+        result.sendList.forEach(async sendObj => {
             switch (sendObj.type) {
                 case eSendType.sendReply:
-                    Sender.asyncReply(message, sendObj.sendMessage);
+                    await Sender.asyncReply(message, sendObj.sendMessage);
                     break;
                 case eSendType.sendReplyByDM:
-                    Sender.asyncDM(message, sendObj.sendMessage);
+                    await Sender.asyncDM(message, sendObj.sendMessage);
                     break;
                 case eSendType.sendDMByUserId:
-                    Sender.asyncDM_fromUserId(client, sendObj.userId, sendObj.sendMessage);
+                    await Sender.asyncDM_fromUserId(client, sendObj.userId, sendObj.sendMessage);
                     break;
                 case eSendType.sendMessageSameChannel:
-                    Sender.asyncSendSameChannel(message, sendObj.sendMessage);
+                    await Sender.asyncSendSameChannel(message, sendObj.sendMessage);
                     break;
             }
         });
@@ -134,6 +149,7 @@ export class Controller {
             console.log("dmで受信");
         }
 
+        // FIXME IDのみでチェックすればよい
         const query = {
             player: user,
         };
@@ -142,14 +158,14 @@ export class Controller {
         ) as PlayUser | null;
 
         if (data) {
-            const result = {
+            return {
+                status: MyError,
                 sendList: [{
                     type: eSendType.sendReply,
                     userId: "",
                     sendMessage: MessageUtil.getMessage(eMessage.C01_AlreadyGM,),
                 }],
             }
-            return result;
         }
 
         const insData: PlayUser = {
@@ -166,32 +182,105 @@ export class Controller {
         const insRet = (await this.connectedDB.PlayUser
             .insertOne(insData)
         );
-        if (insRet.acknowledged) {
-            const result = {
-                sendList: [{
-                    type: eSendType.sendReply,
-                    userId: "",
-                    sendMessage: MessageUtil.getMessage(eMessage.C01_BecameGM, user.name),
-                }],
-            }
-            return result;
-        }
-        else {
-            const result = {
+        if (!insRet.acknowledged) {
+            return {
+                status: MyError,
                 sendList: [{
                     type: eSendType.sendReply,
                     userId: "",
                     sendMessage: MessageUtil.getMessage(eMessage.C01_DBError,),
                 }],
             }
-            return result;
+        }
+
+        return {
+            status: MySuccess,
+            sendList: [{
+                type: eSendType.sendReply,
+                userId: "",
+                sendMessage: MessageUtil.getMessage(eMessage.C01_BecameGM, user.name),
+            }],
         }
     }
 
 
-    // static prosessSplaJinroStart(args: CommandMessageAnalysis) {
+    changeMember = async (isDM: boolean, user: MyUser, inputMenbers: MyUser[]): Promise<MyResult> => {
+        if (isDM) {
+            // ではだめ
+            return {
+                status: MyError,
+                sendList: [{
+                    type: eSendType.sendReply,
+                    userId: "",
+                    sendMessage: MessageUtil.getMessage(eMessage.C02_NotAllowFromDM,),
+                }],
+            }
+        }
 
-    // }
+        const query = {
+            player: user,
+        };
+        let data = (await this.connectedDB.PlayUser
+            .findOne(query)
+        ) as PlayUser | null;
+
+        let result: MyResult = {
+            status: MySuccess,
+            sendList: [],
+        }
+        if (!data) {
+            const resultStartGM = await this.startGM(isDM, user);
+            if (resultStartGM.status != MySuccess) {
+                return resultStartGM;
+            }
+            result.sendList = resultStartGM.sendList;
+            
+            data = (await this.connectedDB.PlayUser
+                .findOne(query)
+            ) as PlayUser | null;
+            if (!data) {
+                throw new Error("論理エラー");
+            }
+        }
+
+        // TODO メッセージは 上記の result に追加する形で。
+        if (inputMenbers.length == 0) {
+            // メンバー参照モード
+            if (data.play_data.members.list.length == 0) {
+                return {
+                    status: MySuccess,
+                    sendList: [{
+                        type: eSendType.sendReply,
+                        userId: "",
+                        sendMessage: MessageUtil.getMessage(eMessage.C02_MemberView_Zero,),
+                    }],
+                }
+            }
+            let msg = data.play_data.members.list.map(mem => mem.name).join("\n");
+            return {
+                status: MyError,
+                sendList: [{
+                    type: eSendType.sendReply,
+                    userId: "",
+                    sendMessage: MessageUtil.getMessage(eMessage.C02_MemberView, msg),
+                }],
+            }
+        }
+
+        //TODO data.memberをコピーして inputMemberに居たら消す。inputMemberにしか居なければ追加する
+        //TODO 削除した人、追加した人をメッセージで表示できるようにする。
+        //TODO DBに登録する前に、最終的なメンバーが多すぎるようならエラーにする。
+
+        // FIXME 仮
+        return {
+            status: MySuccess,
+            sendList: [{
+                type: eSendType.sendReply,
+                userId: "",
+                sendMessage: MessageUtil.getMessage("",),
+            }],
+        }
+    }
     // static prosessSplaJinroStart(args: CommandMessageAnalysis) {
 
     // }
@@ -214,44 +303,44 @@ export class Controller {
         ) as PlayUser | null;
 
         if (!data) {
-            const result = {
+            return {
+                status: MyError,
                 sendList: [{
                     type: eSendType.sendReply,
                     userId: "",
                     sendMessage: MessageUtil.getMessage(eMessage.C05_IsNotGM,),
                 }],
             }
-            return result;
         }
 
         const delRet = (await this.connectedDB.PlayUser
-            .deleteOne(query)
+            .deleteMany(query)
         );
-        if (delRet.acknowledged) {
-            const result = {
-                sendList: [{
-                    type: eSendType.sendReply,
-                    userId: "",
-                    sendMessage: MessageUtil.getMessage(eMessage.C05_QuitGM, user.name),
-                }],
-            }
-            return result;
-        }
-        else {
-            const result = {
+        if (!delRet.acknowledged) {
+            return {
+                status: MyError,
                 sendList: [{
                     type: eSendType.sendReply,
                     userId: "",
                     sendMessage: MessageUtil.getMessage(eMessage.C05_DBError,),
                 }],
             }
-            return result;
+        }
+
+        return {
+            status: MySuccess,
+            sendList: [{
+                type: eSendType.sendReply,
+                userId: "",
+                sendMessage: MessageUtil.getMessage(eMessage.C05_QuitGM,),
+            }],
         }
     }
 
     showHow2User = (): MyResult => {
         let msg: string = "";
         let result: MyResult = {
+            status: MySuccess,
             sendList: [],
         }
 

@@ -5,9 +5,11 @@ export const eMessage = {
     C01_AlreadyGM: "もうこれ以上のGMにはなれません。",
     C01_DBError: "予期せぬエラーでGMとして登録できませんでした。ごめんね…。",
     // role
+    C02_NotAllowFromDM: "チャンネルからコマンドを実行してください。",
+    C02_MemberView_Zero: "現在メンバーはいません。",
+    C02_MemberView: "現在のメンバーをお知らせします。",
     C02_AddMember: "メンバーを追加しました。現在のメンバーをお知らせします。",
     C02_DeleteMember: "メンバーを削除しました。現在のメンバーをお知らせします。",
-    C02_ConfirmMember: "現在のメンバーをお知らせします。",
     C02_ToMany: "何人でやるつもりでおまんがな",
     // roleSend
     C03_MemberNothing: "メンバーを決定してね😨",

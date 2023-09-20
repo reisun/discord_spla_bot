@@ -34,7 +34,7 @@ client.on(Events.MessageCreate, async message => {
     if (!controller.initialized){
         return;
     }
-
+    // TODO: DM が受信できない理由を調べる
     console.log(message);
 
     await controller.processMessage(client, message);
