@@ -1,5 +1,5 @@
 ﻿import {
-    Client, Message, Events, GatewayIntentBits, GatewayDispatchEvents
+    Client, Message, Events, GatewayIntentBits, Partials
 } from 'discord.js';
 import env from "../inc/env.json";
 import { Controller as Controller } from "./Control"
@@ -7,13 +7,18 @@ import { Controller as Controller } from "./Control"
 const client = new Client({
     intents: [
         GatewayIntentBits.Guilds,
-        GatewayIntentBits.GuildMembers,
-        GatewayIntentBits.MessageContent,
         GatewayIntentBits.GuildMessages,
         GatewayIntentBits.DirectMessages,
-    ]
+        GatewayIntentBits.MessageContent,
+    ],
+    // BotへのDMを受信するには以下が必要みたい
+    // thanks!
+    // https://stackoverflow.com/questions/68700270/event-messagecreate-not-firing-emitting-when-i-send-a-dm-to-my-bot-discord-js-v
+    partials: [Partials.Channel],
 });
 const controller = new Controller();
+
+
 
 client.once('ready', () => {
     console.log('discord connected !');
@@ -22,21 +27,13 @@ client.once('ready', () => {
     controller.asyncSetup();
 });
 
-// // メンバー加入時
-// client.on("guildMemberAdd", member => {
-//     // 指定のサーバー以外では動作しないようにする
-//     if (member.guild != null && !env.allowed_serv.includes(member.guild.id))
-//         return;
-// });
-
 // メッセージ受信時
 client.on(Events.MessageCreate, async message => {
+    Controller.logMessage(message);
     if (!controller.initialized){
         return;
     }
-    // TODO: DM が受信できない理由を調べる
-    console.log(message);
-
+    
     await controller.processMessage(client, message);
 
 });

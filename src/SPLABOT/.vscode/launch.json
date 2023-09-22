@@ -8,6 +8,7 @@
             "skipFiles": [
                 "<node_internals>/**"
             ],
+            "preLaunchTask": "npm: compile",
             "program": "${workspaceFolder}/app/app.ts",
         }
     ]

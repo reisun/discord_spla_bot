@@ -1,4 +1,4 @@
-﻿import { Client, Channel, TextChannel, User, Message, DMChannel, } from 'discord.js';
+﻿import { Client, Channel, User, Message, ChannelType, } from 'discord.js';
 import env from "../inc/env.json";
 import { eCommands } from "./Def"
 import { CommandMessageAnalysis } from "./Utilis";
@@ -358,6 +358,11 @@ export class Controller {
 
         return result;
     }
+
+    static logMessage = (msg: Message): void => {
+        const isDM = MyFuncs.isDM(msg) ? "DM" : "not DM";
+        console.log("Recept! msg:%s, sender:%s, DM?:%s", msg.content, msg.author.displayName, isDM)
+    }
 }
 
 
@@ -384,9 +389,7 @@ class MyFuncs {
     }
 
     static isDM = (message: Message) => {
-        if (message.guild)
-            return false;
-        return true;
+        return message.channel.type === ChannelType.DM;
     }
 
 }
