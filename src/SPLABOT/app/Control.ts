@@ -1,4 +1,4 @@
-﻿import { Client, Channel, User, Message, ChannelType, } from 'discord.js';
+import { Client, Channel, User, Message, ChannelType, } from 'discord.js';
 import { v4 as uuidv4 } from 'uuid';
 import env from "../inc/env.json";
 import { MAX_MEMBER_COUNT, eCommands } from "./Def"

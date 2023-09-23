@@ -1,4 +1,4 @@
-﻿
+
 export const eMessage = {
     // StartGM ⇒ DBに登録されたという意味合いに変更
     C01_BecameGM: "ようこそ、{0}。", //あなたがGM(Game Master😊)になりました。",

@@ -1,4 +1,4 @@
-﻿import { MongoClient, Collection, MongoClientOptions, ObjectId } from 'mongodb'
+import { MongoClient, Collection, MongoClientOptions, ObjectId } from 'mongodb'
 
 const MONGODB_URI = 'mongodb://root:example@mongodb:27017/appData?authSource=admin'
 

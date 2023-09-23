@@ -1,4 +1,4 @@
-﻿export const eCommands = {
+export const eCommands = {
     Member: "/spjメンバー",
     SuggestRole: "/spjロール提案",
     SendRole: "/spjロールDM送信",

@@ -1,4 +1,4 @@
-﻿import { EnumTypeGuard, eCommands } from "./Def"
+import { EnumTypeGuard, eCommands } from "./Def"
 
 export class CommandMessageAnalysis {
     private _value: string[][];
