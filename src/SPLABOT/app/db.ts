@@ -14,14 +14,16 @@ export type User = {
 
 export type PlayUser = {
   _id?: ObjectId
+  player_id: string, // キーにしたいので 単独の項目にする オブジェクトにしない
   player: User,
-  player_last_ope_datatime: string,
+  player_last_ope_datatime: Date,
   play_mode: ePlayMode,
   play_data: {
     members: {
       key: string,
       list: User[],
     }
+    suggestRoleTemplate: string,
   }
 };
 

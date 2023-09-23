@@ -1,10 +1,10 @@
 ﻿export const eCommands = {
-    SplaJinroStart: "/スプラ人狼",
-    Member: "/spメンバー",
-    RolePlan: "/spロール",
-    RoleSend: "/spロール送信",
-    Vote: "/sp投票",
-    SplaJinroEnd: "/spやめる",
+    Member: "/spjメンバー",
+    SuggestRole: "/spjロール提案",
+    SendRole: "/spjロールDM送信",
+    CreateVote: "/spj投票",
+    ClearData: "/spjクリア",
+    EditRoleTemplate: "/spjロールテンプレート",
 } as const;
 export type eCommands = (typeof eCommands)[keyof typeof eCommands];
 
@@ -13,3 +13,5 @@ export class EnumTypeGuard {
         return Object.values(eCommands).some(elm => elm === v);
     }
 }
+
+export const MAX_MEMBER_COUNT: number = 14;

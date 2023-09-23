@@ -12,8 +12,10 @@
   },
   "dependencies": {
     "@types/mongodb": "^4.0.7",
+    "@types/uuid": "^9.0.4",
     "discord.js": "^14.13.0",
     "mongodb": "^6.1.0",
-    "typescript": "^5.2.2"
+    "typescript": "^5.2.2",
+    "uuid": "^9.0.1"
   }
 }

@@ -29,13 +29,10 @@ client.once('ready', () => {
 
 // メッセージ受信時
 client.on(Events.MessageCreate, async message => {
-    Controller.logMessage(message);
     if (!controller.initialized){
         return;
     }
-    
     await controller.processMessage(client, message);
-
 });
 
 client.login(env.token);
