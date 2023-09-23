@@ -1,3 +1,4 @@
-node_modules
+﻿node_modules
 inc/env.json
 dist
+package-lock.json

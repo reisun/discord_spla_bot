@@ -38,9 +38,9 @@ client.on(Events.MessageCreate, async message => {
 //スラッシュコマンドに応答するには、interactionCreateのイベントリスナーを使う必要があります
 client.on(Events.InteractionCreate, async interaction => {
 
-    // // スラッシュ以外のコマンドの場合は対象外なので早期リターンさせて終了します
-    // // コマンドにスラッシュが使われているかどうかはisChatInputCommand()で判断しています
-    // if (!interaction.isChatInputCommand()) return;
+    // スラッシュ以外のコマンドの場合は対象外なので早期リターンさせて終了します
+    // コマンドにスラッシュが使われているかどうかはisChatInputCommand()で判断しています
+    if (!interaction.isChatInputCommand()) return;
 
     // // heyコマンドに対する処理
     // if (interaction.commandName === heyFile.data.name) {
