@@ -578,7 +578,7 @@ export class Controller {
         }
 
         if ((cmd.getLineNum() - 1) < data.play_data.member_list.length) {
-            return MyFuncs.createErrorReply(eMessage.C04_MemberArgNonMatch,);
+            return MyFuncs.createErrorReply(eMessage.C04_MemberArgNonMatch, eCommands.SuggestRole);
         }
 
         // エラーチェックと合わせて情報を保持してしまう
@@ -683,8 +683,14 @@ export class Controller {
             console.log("dmで受信");
         }
 
-        // メンバーデータを削除
+        // ユーザーデータ取得
         const query = { player_id: user.id };
+        let data = (await this.connectedDB.PlayUser.findOne(query)) as PlayUser | null;
+        if (!data || data.play_data.member_list.length == 0) {
+            return MyFuncs.createErrorReply(eMessage.C06_DataNothing,);
+        }
+
+        // メンバーデータを削除
         const updRet = (await this.connectedDB.PlayUser.updateOne(
             query,
             {
@@ -697,7 +703,7 @@ export class Controller {
             },
         ));
 
-        if (!updRet.acknowledged || updRet.modifiedCount != 0) {
+        if (!updRet.acknowledged || updRet.modifiedCount == 0) {
             return MyFuncs.createErrorReply(eMessage.C06_DBError,);
         }
 
