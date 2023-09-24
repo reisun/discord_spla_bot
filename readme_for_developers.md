@@ -4,7 +4,7 @@
     docker-compose up -d --build
 
 ### dockerコンテナに入る
-    docker exec -it {コンテナ名} bash
+    docker exec -it discord_spla_bot sh
 
 ### node_modulesのインストール
     cd /home/SPLABOT

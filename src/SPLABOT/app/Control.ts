@@ -1,7 +1,6 @@
-import { Client, Channel, User, Message, ChannelType, } from 'discord.js';
-import { v4 as uuidv4 } from 'uuid';
+import { Client, Channel, User, Message, ChannelType, Interaction, TextChannel, DMChannel, TextBasedChannel, ApplicationCommandOptionType, ApplicationCommandOptionBase, ApplicationCommandType } from 'discord.js';
 import env from "../inc/env.json";
-import { MAX_MEMBER_COUNT, eCommands } from "./Def"
+import { EnumTypeGuard, MAX_MEMBER_COUNT, eCommands } from "./Def"
 import { CommandMessageAnalysis as CommandMessageAnalyser } from "./Utilis";
 import { DBAccesser, User as MyUser, PlayUser, ePlayMode } from "./db";
 import { MessageUtil, eMessage } from "./Message";
@@ -12,10 +11,7 @@ const GLOBAL_USER_DATA = {
     player_last_ope_datatime: new Date(),
     play_mode: ePlayMode.SplaJinro,
     play_data: {
-        members: {
-            key: "",
-            list: [],
-        },
+        member_list: [],
         suggestRoleTemplate: `${eCommands.SuggestRole} あきと 人狼 狂人`,
     }
 };
@@ -24,7 +20,6 @@ const eSendType = {
     sendReply: 1,
     sendReplyByDM: 2,
     sendDMByUserId: 3,
-    sendMessageSameChannel: 4,
 }
 type eSendType = (typeof eSendType)[keyof typeof eSendType];
 
@@ -45,17 +40,17 @@ interface MyResult {
 
 class Sender {
     static async asyncReply(message: Message, sendMessage: string) {
-        message.reply(sendMessage);
+        await message.reply(sendMessage);
     }
-    static async asyncDM(message: Message, sendMessage: string) {
-        message.author.send(sendMessage);
+    static async asyncDM(user: User, sendMessage: string) {
+        await user.send(sendMessage);
     }
     static async asyncDM_fromUserId(client: Client, userId: string, sendMessage: string) {
         let dmChannel = await client.users.createDM(userId);
-        dmChannel.send(sendMessage);
+        await dmChannel.send(sendMessage);
     }
-    static async asyncSendSameChannel(message: Message, sendMessage: string) {
-        message.channel.send(sendMessage);
+    static async asyncSendSameChannel(ch: TextBasedChannel, sendMessage: string) {
+        await ch.send(sendMessage);
     }
 }
 
@@ -92,9 +87,126 @@ export class Controller {
     }
     asyncSetup = async () => {
         this._dbAccesser = await DBAccesser.connect();
-        console.log('db connected !');
         // グローバルデータが無ければメソッド内で作成してくれるので、これを呼んでおく
-        this.getGlobalData();
+        await this.getGlobalData();
+        console.log('bot MyDB connected!');
+    }
+
+    processCommand = async (client: Client, interaction: Interaction) => {
+        if (!interaction.isCommand())
+            return;
+
+        if (!EnumTypeGuard.isMyCommands(interaction.commandName))
+            return;
+
+        // Discord API の仕様上 3秒以内に何らかのレスポンスを返す必要あり
+        // 考え中的なレスポンスを返す
+        let waitExists = true;
+        await interaction.reply("応答中…");
+
+        console.log("コマンド受付：" + interaction.commandName);
+        console.log(interaction.command);
+
+        let isDM = MyFuncs.isDM(interaction.channel);
+        let sender: MyUser = {
+            id: interaction.user.id,
+            name: interaction.user.displayName,
+        }
+        let mentionUsers: MyUser[] = [];
+
+        let messageCommand = "/" + interaction.commandName;
+        for (const opt of interaction.options.data) {
+            if (opt.type == ApplicationCommandOptionType.Subcommand && opt.name == "edit") {
+                if (!opt.options) {
+                    continue;
+                }
+                for (const subopt of opt.options) {
+                    if (subopt.type == ApplicationCommandOptionType.User) {
+                        const userid = <string>subopt.value;
+                        const name = (await client.users.fetch(userid)).displayName;
+                        mentionUsers.push({
+                            id: userid,
+                            name: name,
+                        });
+                    }
+                }
+            }
+            if (opt.type == ApplicationCommandOptionType.Subcommand && opt.name == "again") {
+                // 引数無し
+            }
+            if (opt.type == ApplicationCommandOptionType.Subcommand && opt.name == "create") {
+                if (!opt.options) {
+                    continue;
+                }
+                for (const subopt of opt.options) {
+                    if (subopt.type == ApplicationCommandOptionType.String && subopt.name == "name") {
+                        messageCommand += " " + subopt.value;
+                    }
+                    if (subopt.type == ApplicationCommandOptionType.String && subopt.name.match(/^role/)) {
+                        messageCommand += " " + subopt.value;
+                    }
+                }
+            }
+        }
+
+        let analyser = new CommandMessageAnalyser(messageCommand);
+        console.log("restore to messageCommand. \n" + messageCommand);
+
+        let result: MyResult;
+        switch (interaction.commandName) {
+            case eCommands.Member:
+                result = await this.updateMember(isDM, sender, mentionUsers);
+                break;
+            case eCommands.SuggestRole:
+                result = await this.suggestRole(isDM, sender, analyser);
+                break;
+            case eCommands.SendRole:
+                result = await this.sendRole(isDM, sender, analyser);
+                break;
+            // TODO 投票機能の実装
+            // case eCommands.CreateVote:
+            //     result = await this.crewateVote(isDM, sender, analyser);
+            //     break;
+            case eCommands.ClearMemberData:
+                result = await this.clearUserData(isDM, sender);
+                break;
+            default:
+                result = {
+                    status: MySuccess,
+                    sendList: [],
+                };
+                break;
+        }
+
+        // 順番に送信する前提で格納されている場合もあるので
+        // 送信ごとに待機する
+        for (const sendObj of result.sendList) {
+            switch (sendObj.type) {
+                case eSendType.sendReply:
+                    if (waitExists) {
+                        waitExists = false;
+                        await interaction.editReply(sendObj.sendMessage);
+                    }
+                    else {
+                        await interaction.followUp(sendObj.sendMessage);
+                    }
+                    break;
+                case eSendType.sendReplyByDM:
+                    if (waitExists) {
+                        waitExists = false;
+                        await interaction.editReply("DMにて返信しました。");
+                    }
+                    await Sender.asyncDM(interaction.user, sendObj.sendMessage);
+                    break;
+                case eSendType.sendDMByUserId:
+                    if (waitExists) {
+                        waitExists = false;
+                        await interaction.editReply("DMに送信しました。");
+                    }
+                    await Sender.asyncDM_fromUserId(client, sendObj.userId, sendObj.sendMessage);
+                    break;
+            }
+        }
     }
 
     processMessage = async (client: Client, message: Message) => {
@@ -102,7 +214,7 @@ export class Controller {
             return;
 
         let analyser = new CommandMessageAnalyser(message.content);
-        let isDM = MyFuncs.isDM(message);
+        let isDM = MyFuncs.isDM(message.channel);
         let sender: MyUser = {
             id: message.author.id,
             name: message.author.displayName,
@@ -114,36 +226,24 @@ export class Controller {
             }
         });
 
-        // TODO /spロールテンプレート設定なるものを作るか？
-        // TODO /spロールテンプレート /グローバル {グローバルテンプレートの設定}
-        // TODO /spロールテンプレート {個人の設定。 空ならグローバルテンプレートで上書き}
-
         let result: MyResult;
         switch (analyser.command) {
-            // startGM は DB登録処理として内部だけで使う
-            // case eCommands.SplaJinroStart:
-            //     result = await this.startGM(isDM, sender);
-            //     break;
             case eCommands.Member:
                 result = await this.updateMember(isDM, sender, mentionUsers);
                 break;
             case eCommands.SuggestRole:
                 result = await this.suggestRole(isDM, sender, analyser);
                 break;
-            //     // TODO ロールDM機能の実装
-            // case eCommands.SendRole:
-            //     result = await this.sendRole(isDM, sender, analyser);
-            //     break;
+            case eCommands.SendRole:
+                result = await this.sendRole(isDM, sender, analyser);
+                break;
             //     // TODO 投票機能の実装
             // case eCommands.CreateVote:
             //     result = await this.crewateVote(isDM, sender, analyser);
             //     break;
-            case eCommands.ClearData:
+            case eCommands.ClearMemberData:
                 result = await this.clearUserData(isDM, sender);
                 break;
-            //     // TODO ロールテンプレート編集の実装
-            // case eCommands.EditRoleTemplate:
-            //     result = await this.editRoleTemplate(isDM, sender, analyser);
             default:
                 result = {
                     status: MySuccess,
@@ -153,22 +253,21 @@ export class Controller {
         }
         // 順番に送信する前提で格納されている場合もあるので
         // 送信ごとに待機する
-        result.sendList.forEach(async sendObj => {
+        for (const sendObj of result.sendList) {
             switch (sendObj.type) {
                 case eSendType.sendReply:
                     await Sender.asyncReply(message, sendObj.sendMessage);
                     break;
                 case eSendType.sendReplyByDM:
-                    await Sender.asyncDM(message, sendObj.sendMessage);
+                    await Sender.asyncDM(message.author, sendObj.sendMessage);
                     break;
                 case eSendType.sendDMByUserId:
                     await Sender.asyncDM_fromUserId(client, sendObj.userId, sendObj.sendMessage);
                     break;
-                case eSendType.sendMessageSameChannel:
-                    await Sender.asyncSendSameChannel(message, sendObj.sendMessage);
+                default:
                     break;
             }
-        });
+        }
     }
 
     insertUserData = async (isDM: boolean, user: MyUser): Promise<MyResult> => {
@@ -191,10 +290,7 @@ export class Controller {
             player_last_ope_datatime: new Date(),
             play_mode: ePlayMode.SplaJinro,
             play_data: {
-                members: {
-                    key: "",
-                    list: [],
-                },
+                member_list: [],
                 suggestRoleTemplate: "",
             }
         }
@@ -206,7 +302,6 @@ export class Controller {
         // 成功メッセージ
         return MyFuncs.createSuccessReply(eMessage.C01_BecameGM, user.name);
     }
-
 
     updateMember = async (isDM: boolean, user: MyUser, inputMenbers: MyUser[]): Promise<MyResult> => {
         if (isDM) {
@@ -238,13 +333,13 @@ export class Controller {
 
         if (inputMenbers.length == 0) {
             // メンションが０人なら参照モード
-            if (data.play_data.members.list.length == 0) {
+            if (data.play_data.member_list.length == 0) {
                 // 参照したがメンバー０人。メッセージを追加して返却
                 result.sendList.push(MyFuncs.createReply(eMessage.C02_MemberView_Zero,));
                 return result;
             }
             // 現在のメンバーを返却
-            let msg = data.play_data.members.list.map(mem =>
+            let msg = data.play_data.member_list.map(mem =>
                 MessageUtil.getMessage(eMessage.C02_inner_MemberFormat, mem.name)
             ).join("\n");
             result.sendList.push(MyFuncs.createReply(eMessage.C02_MemberView, msg));
@@ -253,13 +348,13 @@ export class Controller {
 
         // ---追加・削除モード
         // 既存メンバーと入力値メンバを重複無しで配列化
-        const unique = new Set(data.play_data.members.list.concat(inputMenbers));
+        const unique = new Set(data.play_data.member_list.concat(inputMenbers));
         const concatMember = [...unique];
 
         // "追加"・"削除"・"変わらず"、のフラグ振り分け
         let workMemberList: { member: MyUser, status: "add" | "delete" | "none" }[] = [];
         concatMember.forEach(cctMen => {
-            const existing = data!.play_data.members.list.some(exsMem => exsMem.id == cctMen.id);
+            const existing = data!.play_data.member_list.some(exsMem => exsMem.id == cctMen.id);
             const isInInput = inputMenbers.some(inpMem => inpMem.id == cctMen.id);
             // 既存メンバーにいる かつ 入力にもいた ⇒ 削除 else そのまま
             if (existing && isInInput) {
@@ -282,7 +377,6 @@ export class Controller {
         }
 
         // メンバー更新
-        const key = uuidv4();
         const newMember = workMemberList
             .filter(workMem => workMem.status != "delete")
             .map(wMem => wMem.member);
@@ -291,8 +385,7 @@ export class Controller {
             query,
             {
                 $set: {
-                    'play_data.members.key': key,
-                    'play_data.members.list': newMember,
+                    'play_data.member_list': newMember,
                 },
                 $currentDate: {
                     player_last_ope_datatime: true,
@@ -338,15 +431,13 @@ export class Controller {
 
         // コマンドチェック
         let cmd = orgCmd;
-        let useTemplate = false;
+        let uesPredata = false;
         if (cmd.getValue(0, 1) == null) {
-            // 引数が１個も無い場合はテンプレートを採用
-            useTemplate = true;
+            // 引数が１個も無い場合は前回のデータを採用
+            uesPredata = true;
             cmd = new CommandMessageAnalyser(data?.play_data.suggestRoleTemplate ?? "");
             if (cmd.isEmpty()) {
-                // グローバルデータから取得
-                const gData = await this.getGlobalData();
-                cmd = new CommandMessageAnalyser(gData?.play_data.suggestRoleTemplate ?? "");
+                return MyFuncs.createErrorReply(eMessage.C03_NonAgainData,);
             }
         }
         // コマンドチェックつづき
@@ -369,26 +460,25 @@ export class Controller {
             roleNameList.push(cmd.getValue(0, i)!);
         }
 
-        if (useTemplate) {
-            // テンプレートを利用した旨のメッセージ
+        if (uesPredata) {
             result.sendList.push(MyFuncs.createReply(
-                eMessage.C03_UseTemplate,
+                eMessage.C03_UsePredata,
                 theName,
                 roleNameList.join("、")))
         }
 
         // メンバーチェック
-        if (data.play_data.members.list.length == 0) {
+        if (data.play_data.member_list.length == 0) {
             result.status = MyError;
             result.sendList.push(MyFuncs.createReply(eMessage.C03_MemberNothing,))
             return result;
         }
-        if (data.play_data.members.list.length < roleNameList.length) {
+        if (data.play_data.member_list.length < roleNameList.length) {
             result.status = MyError;
             result.sendList.push(MyFuncs.createReply(
                 eMessage.C03_MemberFew,
                 roleNameList.length,
-                data.play_data.members.list.length));
+                data.play_data.member_list.length));
             return result;
         }
 
@@ -396,7 +486,7 @@ export class Controller {
 
         // 全員村人にして、役職ごとにランダムで決定
         let workMemberList: { member: MyUser, dispName: string, role: string }[]
-            = data.play_data.members.list.map(mem => { return { member: mem, dispName: "", role: "村人" }; });
+            = data.play_data.member_list.map(mem => { return { member: mem, dispName: "", role: "村人" }; });
         roleNameList.forEach(role => {
             let hitIdx = 999;
             do {
@@ -422,42 +512,170 @@ export class Controller {
         });
 
         // 文字列化
-        let memberUID = data.play_data.members.key;
         let memberRoleStr = "";
-        let option = "狂人=>知らせる=>人狼";
+        let option = MessageUtil.getMessage(
+            eMessage.C03_inner_1_know_to_0, "人狼", "狂人");
 
         // 文字幅調整
         let roleMaxlen = Math.max(...roleNameList.map(v => v.length));
 
-        memberRoleStr = workMemberList.map(obj => 
-            MessageUtil.getMessage(eMessage.C03_inner_MemberFormat, 
-                obj.dispName, 
+        memberRoleStr = workMemberList.map(obj =>
+            MessageUtil.getMessage(eMessage.C03_inner_MemberFormat,
+                obj.dispName,
                 obj.role.padEnd(roleMaxlen, "　"), // 役職は全角だろうという前提
                 obj.member.name),
         ).join("\n");
 
-        // TODO Embed を使って記載できないか？ あぁコマンドになるからコピーできなとだめか
-        // TODO 配役に問題なければ リアクション で 送信コピペを省略できないか？
-        // TODO スラッシュコマンドへの対応
-
         result.sendList.push(
-            MyFuncs.createReply(eMessage.C03_SuggestMemberExplain),
-            MyFuncs.createReply(
+            MyFuncs.createReplyDM(eMessage.C03_SuggestMemberExplain),
+            MyFuncs.createReplyDM(
                 eMessage.C03_SuggestMember,
                 eCommands.SendRole,
-                memberUID,
                 memberRoleStr,
                 option),
         );
+
+        if (!uesPredata) {
+            // 今回のパラメータを記憶
+            const updRet = (await this.connectedDB.PlayUser.updateOne(
+                query,
+                {
+                    $set: {
+                        'play_data.suggestRoleTemplate': cmd.orgString,
+                    },
+                    $currentDate: {
+                        player_last_ope_datatime: true,
+                    },
+                },
+            ));
+            // これがDBエラーでもメイン処理に弊害は無いのでログだけにする
+            if (!updRet.acknowledged || updRet.modifiedCount == 0) {
+                console.log("play_data.suggestRoleTemplate update failed. player_id:" + query.player_id);
+            }
+        }
         return result;
     }
 
+    sendRole = async (isDM: boolean, user: MyUser, orgCmd: CommandMessageAnalyser): Promise<MyResult> => {
+        // スラッシュコマンドなら他ユーザーに見えないようにできるのか？
+        // ⇒ DM送信の方がその後の手順としても良いか。
+        if (!isDM) {
+            // DMで送らないと視えちゃうのでだめ
+            return MyFuncs.createErrorReply(eMessage.C04_NeedDM);
+        }
 
-    // }
-    // static prosessSplaJinroStart(args: CommandMessageAnalysis) {
+        // ユーザーデータ取得
+        const query = { player_id: user.id };
+        let data = (await this.connectedDB.PlayUser.findOne(query)) as PlayUser | null;
+        if (!data) {
+            return MyFuncs.createErrorReply(eMessage.C04_MemberNothing,);
+        }
 
-    // }
+        // コマンドチェック
+        let cmd = orgCmd;
+        if (cmd.getValue(1, 0) == null) {
+            return MyFuncs.createErrorReply(eMessage.C04_MemberArgNothing,);
+        }
 
+        if ((cmd.getLineNum() - 1) < data.play_data.member_list.length) {
+            return MyFuncs.createErrorReply(eMessage.C04_MemberArgNonMatch,);
+        }
+
+        // エラーチェックと合わせて情報を保持してしまう
+        let memberRoleDef: {
+            id: string,
+            name: string,
+            theName: string,
+            role: string,
+        }[] = [];
+
+        for (const dataMem of data.play_data.member_list) {
+            for (let i = 1; i < cmd.getLineNum(); i++) {
+                if (cmd.getLength(i) != 3)
+                    continue;
+
+                const theName = <string>cmd.getValue(i, 0);
+                const role = <string>cmd.getValue(i, 1);
+                const nameInCmmand = <string>cmd.getValue(i, 2);
+                if (dataMem.name != nameInCmmand)
+                    continue;
+
+                memberRoleDef.push({
+                    id: dataMem.id,
+                    name: dataMem.name,
+                    theName: theName,
+                    role: role,
+                });
+            }
+        }
+
+        // 現在登録されているメンバーがコマンドに入って無ければエラー
+        if (data.play_data.member_list.length != memberRoleDef.length) {
+            return MyFuncs.createErrorReply(eMessage.C04_MemberArgNonMatch,);
+        }
+
+        // オプション情報
+        let option: {
+            targetRole: string,
+            action: "canknow",
+            complement: string,
+        }[] = [];
+
+        // コマンド行 + メンバー行 の次にオプション行
+        const optStartIdx = 1 + memberRoleDef.length;
+        for (let i = optStartIdx; i < cmd.getLineNum(); i++) {
+            const strOpt = <string>cmd.getValue(i, 0);
+            const sepalate = MessageUtil.getMessage(eMessage.C03_inner_1_know_to_0, "", "");
+            const optArray = strOpt.split(sepalate);
+            if (optArray.length == 2) {
+                option.push({
+                    targetRole: optArray[1],
+                    action: "canknow",
+                    complement: optArray[0],
+                });
+            }
+        }
+
+        // 各メンバーにDM
+        let result: MyResult = {
+            status: MySuccess,
+            sendList: [],
+        };
+
+        for (const mem of memberRoleDef) {
+            result.sendList.push(
+                MyFuncs.createDMToOtherUser(
+                    mem.id,
+                    eMessage.C04_SendRoleTmpl,
+                    mem.theName, mem.role
+                )
+            );
+        }
+
+        // オプションの処理
+        for (const opt of option) {
+            if (opt.action == "canknow") {
+                // △△に◆◆の役職を伝えるオプション
+                for (const mem of memberRoleDef.filter(mem => mem.role == opt.targetRole)) {
+                    result.sendList.push(
+                        MyFuncs.createDMToOtherUser(
+                            mem.id,
+                            eMessage.C04_SendKnowTmpl,
+                            mem.role,
+                            opt.complement,
+                            memberRoleDef
+                                .filter(m => m.role == opt.complement)
+                                .map(m => `${m.theName}(${m.name})`).join("、 "),
+                        )
+                    );
+                }
+            }
+        }
+
+        // 送信成功を伝えるDM
+        result.sendList.push(MyFuncs.createReply(eMessage.C04_DMSuccess,));
+        return result;
+    }
 
     clearUserData = async (isDM: boolean, user: MyUser): Promise<MyResult> => {
         if (isDM) {
@@ -465,39 +683,25 @@ export class Controller {
             console.log("dmで受信");
         }
 
+        // メンバーデータを削除
         const query = { player_id: user.id };
-        const data = (await this.connectedDB.PlayUser.findOne(query)) as PlayUser | null;
-        if (!data) {
-            return {
-                status: MyError,
-                sendList: [{
-                    type: eSendType.sendReply,
-                    userId: "",
-                    sendMessage: MessageUtil.getMessage(eMessage.C06_IsNotGM,),
-                }],
-            }
+        const updRet = (await this.connectedDB.PlayUser.updateOne(
+            query,
+            {
+                $set: {
+                    'play_data.member_list': [],
+                },
+                $currentDate: {
+                    player_last_ope_datatime: true,
+                },
+            },
+        ));
+
+        if (!updRet.acknowledged || updRet.modifiedCount != 0) {
+            return MyFuncs.createErrorReply(eMessage.C06_DBError,);
         }
 
-        const delRet = await this.connectedDB.PlayUser.deleteMany(query);
-        if (!delRet.acknowledged) {
-            return {
-                status: MyError,
-                sendList: [{
-                    type: eSendType.sendReply,
-                    userId: "",
-                    sendMessage: MessageUtil.getMessage(eMessage.C06_DBError,),
-                }],
-            }
-        }
-
-        return {
-            status: MySuccess,
-            sendList: [{
-                type: eSendType.sendReply,
-                userId: "",
-                sendMessage: MessageUtil.getMessage(eMessage.C06_QuitGM,),
-            }],
-        }
+        return MyFuncs.createSuccessReply(eMessage.C06_ClearMemberData,);
     }
 
     getGlobalData = async (): Promise<PlayUser> => {
@@ -513,39 +717,12 @@ export class Controller {
         return GLOBAL_USER_DATA;
     }
 
-    static showHow2User = (): MyResult => {
-        let msg: string = "";
-        let result: MyResult = {
-            status: MySuccess,
-            sendList: [],
-        }
-
-        result.sendList.push({
-            type: eSendType.sendReply,
-            userId: "",
-            sendMessage: "以下のコマンドが使えます！😊",
-        });
-
-        result.sendList.push({
-            type: eSendType.sendReply,
-            userId: "",
-            sendMessage: `${eCommands.Member} ……かきかけ`,
-        });
-
-        return result;
-    }
-
     static MessageLog = (msg: Message): void => {
-        const isDM = MyFuncs.isDM(msg) ? "DM" : "not DM";
+        const isDM = MyFuncs.isDM(msg.channel) ? "DM" : "not DM";
         console.log("Recept! msg:%s, sender:%s, DM?:%s", msg.content, msg.author.displayName, isDM)
     }
 
-
 }
-
-
-
-
 
 
 class MyFuncs {
@@ -567,8 +744,8 @@ class MyFuncs {
         return true;
     }
 
-    static isDM = (message: Message) => {
-        return message.channel.type === ChannelType.DM;
+    static isDM = (ch: Channel | null) => {
+        return ch?.type === ChannelType.DM;
     }
 
     static getRandomInt = (max: number): number => {
@@ -583,6 +760,30 @@ class MyFuncs {
         return {
             type: eSendType.sendReply,
             userId: "",
+            sendMessage: MessageUtil.getMessage(msg, ...args),
+        };
+    }
+
+    static createReplyDM = (msg: eMessage, ...args: unknown[]): {
+        type: eSendType,
+        userId: string,
+        sendMessage: eMessage,
+    } => {
+        return {
+            type: eSendType.sendReplyByDM,
+            userId: "",
+            sendMessage: MessageUtil.getMessage(msg, ...args),
+        };
+    }
+
+    static createDMToOtherUser = (id: string, msg: eMessage, ...args: unknown[]): {
+        type: eSendType,
+        userId: string,
+        sendMessage: eMessage,
+    } => {
+        return {
+            type: eSendType.sendDMByUserId,
+            userId: id,
             sendMessage: MessageUtil.getMessage(msg, ...args),
         };
     }

@@ -5,12 +5,12 @@ export class CommandMessageAnalysis {
     constructor(public orgString: string) {
         this._value = orgString.split("\n").map(elm => 
             // 半角 or 全角 のスペースがパラメータの区切りとする
-            elm.split(/[ 　]/)
+            elm.split(/[ 　]+/)
             );
     }
     get command(): eCommands | null {
-        const v = this.getValue(0, 0);
-        return EnumTypeGuard.isCommands(v) ? v : null;
+        const v = this.getValue(0, 0)?.replace(/^\//, "");
+        return EnumTypeGuard.isMyCommands(v) ? v : null;
     }
     getValue(rowIdx: number, itemIdx: number): string | null {
         return this._value.at(rowIdx)?.at(itemIdx) ?? null;
@@ -28,6 +28,10 @@ export class CommandMessageAnalysis {
      */
     getLength(rowIdx: number): number {
         return this._value.at(rowIdx)?.length ?? 0;
+    }
+
+    getLineNum(): number {
+        return this._value.length;
     }
 
     static isMention(value: string) {

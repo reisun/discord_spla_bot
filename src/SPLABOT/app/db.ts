@@ -19,10 +19,7 @@ export type PlayUser = {
   player_last_ope_datatime: Date,
   play_mode: ePlayMode,
   play_data: {
-    members: {
-      key: string,
-      list: User[],
-    }
+    member_list: User[],
     suggestRoleTemplate: string,
   }
 };

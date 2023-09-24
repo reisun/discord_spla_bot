@@ -1,8 +1,13 @@
-import {
-    Client, Message, Events, GatewayIntentBits, Partials
-} from 'discord.js';
 import env from "../inc/env.json";
-import { Controller as Controller } from "./Control"
+import {
+    Client, Message, Interaction, Events, GatewayIntentBits, Partials,
+    // ↓ discord WebAPI
+    REST, Routes,
+} from 'discord.js';
+import { Controller } from "./Control"
+import { COMMAND_DEF_LIST as MY_COMMANDS } from "./Def";
+
+console.log('import finished!');
 
 const client = new Client({
     intents: [
@@ -16,47 +21,71 @@ const client = new Client({
     // https://stackoverflow.com/questions/68700270/event-messagecreate-not-firing-emitting-when-i-send-a-dm-to-my-bot-discord-js-v
     partials: [Partials.Channel],
 });
+const rest = new REST({
+    version: '10'
+});
+
 const controller = new Controller();
 
 
 
-client.once('ready', () => {
-    console.log('discord connected !');
+client.once('ready', async () => {
+    console.log('discord connected!');
 
-    // このイベント内で await して良いのか分からないのでひとまず非同期で
-    controller.asyncSetup();
+    // ---スラッシュコマンド 更新処理
+    try {
+        // サーバーごとにループ
+        for (const servId of env.allowed_serv) {
+            // 古いコマンドかもしれないので、同じAppIDのコマンドは削除
+            const guild = client.guilds.cache.get(servId);
+            let commandList = await guild?.commands.fetch();
+            if (commandList){
+                for (const cmd of commandList.values()){
+                    if (cmd.applicationId == env.appid) {
+                        await guild?.commands.delete(cmd.id);
+                    }
+               }
+            }
+            // コマンド追加
+            await rest.put(
+                Routes.applicationGuildCommands(env.appid, servId),
+                { body: MY_COMMANDS },
+            );
+        }
+        console.log('slash command refresh success!');
+    } catch (error) {
+        console.error('slash command refresh failed... :', error);
+    }
+
+    // ---アプリ初期処理
+    await controller.asyncSetup();
 });
 
 // メッセージ受信時
 client.on(Events.MessageCreate, async message => {
-    if (!controller.initialized){
+    if (!controller.initialized) {
         return;
     }
-    await controller.processMessage(client, message);
+    try {
+        await controller.processMessage(client, message);
+    }
+    catch(e) {
+        console.log(e);
+    }
 });
 
-//スラッシュコマンドに応答するには、interactionCreateのイベントリスナーを使う必要があります
+//スラッシュコマンド
 client.on(Events.InteractionCreate, async interaction => {
-
-    // スラッシュ以外のコマンドの場合は対象外なので早期リターンさせて終了します
-    // コマンドにスラッシュが使われているかどうかはisChatInputCommand()で判断しています
-    if (!interaction.isChatInputCommand()) return;
-
-    // // heyコマンドに対する処理
-    // if (interaction.commandName === heyFile.data.name) {
-    //     try {
-    //         await heyFile.execute(interaction);
-    //     } catch (error) {
-    //         console.error(error);
-    //         if (interaction.replied || interaction.deferred) {
-    //             await interaction.followUp({ content: 'コマンド実行時にエラーになりました。', ephemeral: true });
-    //         } else {
-    //             await interaction.reply({ content: 'コマンド実行時にエラーになりました。', ephemeral: true });
-    //         }
-    //     }
-    // } else {
-    //     console.error(`${interaction.commandName}というコマンドには対応していません。`);
-    // }
+    if (!controller.initialized) {
+        return;
+    }
+    try {
+        await controller.processCommand(client, interaction);
+    }
+    catch(e) {
+        console.log(e);
+    }
 });
 
 client.login(env.token);
+rest.setToken(env.token);
