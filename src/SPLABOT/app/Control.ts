@@ -394,9 +394,14 @@ export class Controller {
         }
 
         // メンバー更新
-        const newMember = workMemberList
+        let newMember = workMemberList
             .filter(workMem => workMem.status != "delete")
             .map(wMem => wMem.member);
+
+        // ここで メンバー名の空白を _ アンスコ に置換しておく
+        for (let i = 0; i < newMember.length; i++){
+            newMember[i].name = newMember[i].name.replace(/[ 　]+/, "_");
+        }
 
         const updRet = (await this.connectedDB.PlayUser.updateOne(
             query,
@@ -628,7 +633,7 @@ export class Controller {
 
         // 現在登録されているメンバーがコマンドに入って無ければエラー
         if (data.play_data.member_list.length != memberRoleDef.length) {
-            return MyFuncs.createErrorReply(eMessage.C04_MemberArgNonMatch,);
+            return MyFuncs.createErrorReply(eMessage.C04_MemberArgNonMatch, eCommands.SuggestRole);
         }
 
         // オプション情報

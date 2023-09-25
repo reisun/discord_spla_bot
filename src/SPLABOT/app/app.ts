@@ -32,32 +32,45 @@ const controller = new Controller();
 client.once('ready', async () => {
     console.log('discord connected!');
 
-    // ---スラッシュコマンド 更新処理
+    // スラッシュコマンド情報を更新
+    // TODO version の値で更新するかチェックしたい
+    // TODO appliation commands 内の create でコマンド追加もできるのでは？
     try {
-        // コマンド情報を更新
-        // TODO version の値で更新するかチェックしたい
-        // TODO appliation commands 内の create でコマンド追加もできるのでは？
-        let commandList = await client.application!.commands.fetch();
-        if (commandList){
-            for (const cmd of commandList.values()){
-                if (cmd.applicationId == client.application!.id) {
-                    await client.application?.commands.delete(cmd.id);
+        // サーバーごとにループ
+        for (const servId of env.allowed_serv) {
+            // 古いコマンドかもしれないので、同じAppIDのコマンドは削除
+            const guild = client.guilds.cache.get(servId);
+            let commandList = await guild?.commands.fetch();
+            if (commandList) {
+                for (const cmd of commandList.values()) {
+                    if (cmd.applicationId == client.application!.id) {
+                        await guild?.commands.delete(cmd.id);
+                    }
                 }
-           }
+            }
+            // コマンド追加
+            await rest.put(
+                Routes.applicationGuildCommands(client.application!.id, servId),
+                { body: MY_COMMANDS },
+            );
         }
-        // コマンド追加
-        await rest.put(
-            Routes.applicationCommands(client.application!.id),
-            { body: MY_COMMANDS },
-        );
-        
+        {
+            let commandList = await client.application?.commands.fetch();
+            if (commandList) {
+                for (const cmd of commandList.values()) {
+                    if (cmd.applicationId == client.application!.id) {
+                        await client.application?.commands.delete(cmd.id);
+                    }
+                }
+            }
+        }
         console.log('slash command refresh success!');
     } catch (error) {
         console.error('slash command refresh failed... :', error);
     }
 
     // ---アプリ初期処理
-    await controller.asyncSetup();    
+    await controller.asyncSetup();
 });
 
 // メッセージ受信時
@@ -68,7 +81,7 @@ client.on(Events.MessageCreate, async message => {
     try {
         await controller.processMessage(client, message);
     }
-    catch(e) {
+    catch (e) {
         console.log(e);
     }
 });
@@ -81,7 +94,7 @@ client.on(Events.InteractionCreate, async interaction => {
     try {
         await controller.processCommand(client, interaction);
     }
-    catch(e) {
+    catch (e) {
         console.log(e);
     }
 });
