@@ -92,7 +92,7 @@ export const eCommands = {
     SuggestRole: "spj_role",
     SendRole: "spj_send_role",
     CreateVote: "spj_vote",
-    ClearMemberData: "spj_member_clear",
+    ClearMemberData: "spj_clear",
 } as const;
 
 export type eCommands = (typeof eCommands)[keyof typeof eCommands];
@@ -178,7 +178,7 @@ export const COMMAND_DEF_LIST: RESTPostAPIChatInputApplicationCommandsJSONBody[]
         .toJSON(),
     new SlashCommandBuilder()
         .setName(eCommands.CreateVote)
-        .setDescription("投票フォームを作成します。")
+        .setDescription("投票Bot「Quick poll」で利用できる、投票用コマンドを作成します。")
         .toJSON(),
     new SlashCommandBuilder()
         .setName(eCommands.ClearMemberData)

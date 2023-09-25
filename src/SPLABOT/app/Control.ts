@@ -5,6 +5,23 @@ import { CommandMessageAnalysis as CommandMessageAnalyser } from "./Utilis";
 import { DBAccesser, User as MyUser, PlayUser, ePlayMode } from "./db";
 import { MessageUtil, eMessage } from "./Message";
 
+// TODO 投票は quick poll に渡すけど、自分であれこれやった方が面白そうだなぁ… メッセージを修正したりできるし
+// TODO メッセージは組み込みにしたい。本文説明（or 導入メッセージ）<改行> 組み込みメッセージ みたいなフォーマットで。
+// TODO 組み込みメッセージで複数をなるべく一つにしたいし、エラーメッセージには色を付けたりした。
+// TODO 普通の人狼でも使えるようにしたい
+// TODO 名前付きはあくまでも オプションにしたい。
+//      ⇒ hide_name オプション common_name role1 role2…
+//      ⇒ basic オプション role1 role2
+// TODO ゲーム名とチャット名を同時に出す仕様は面倒なので、どちらかが出る仕様としたい。
+//      ⇒ 共通名前付き にするなら、ちゃんと共通名前でやり取りして、
+//          必要なら議論タイムで名乗るってのがゲームだと思うし。
+// TODO sendRoleのパラメータチェックが甘いっぽい。一行一行ちゃんとチェックするのが良さそう
+//      まずデータの移送を先に済ませてから移送先の変数でチェックしてみよう
+// TODO 再起動後はDBの整合性を考えるとグローバルデータ以外は全件削除が良いか？不具合が出たら /spjクリアをしてもらう運用か？
+//     再起動後のコメント使いまわしでエラーになるため、プレイヤーIDが代わっている可能性
+//     まぁBOT相手でそうなっているだけだから実際の仕様では問題ない……になると予見しているが
+// TODO controler　は inner と外用で分けたい。例外処理も controlerがわで
+
 const GLOBAL_USER_DATA = {
     player_id: "-1",
     player: { id: "-1", name: "global" },
@@ -164,9 +181,9 @@ export class Controller {
                 result = await this.sendRole(isDM, sender, analyser);
                 break;
             // TODO 投票機能の実装
-            // case eCommands.CreateVote:
-            //     result = await this.crewateVote(isDM, sender, analyser);
-            //     break;
+            case eCommands.CreateVote:
+                result = await this.createVote(isDM, sender);
+                break;
             case eCommands.ClearMemberData:
                 result = await this.clearUserData(isDM, sender);
                 break;
@@ -677,6 +694,20 @@ export class Controller {
         return result;
     }
 
+    createVote = async (isDM: boolean, user: MyUser): Promise<MyResult> => {
+        if (isDM){
+            // 投票用のコマンドを作るだけなので DM から送られてもOK
+        }
+
+        let result = MyFuncs.createSuccessReply("次のメッセージをコピペしてください。", );
+        let msg ="";
+        msg += "?expoll [今日は誰を追放しますか？]\n";
+        msg += " :regional_indicator_g: テストｇ\n";
+        msg += " :regional_indicator_j: テストｊ\n";
+        result.sendList.push(MyFuncs.createReply(msg, ));
+        return result;
+    }
+
     clearUserData = async (isDM: boolean, user: MyUser): Promise<MyResult> => {
         if (isDM) {
             // でもOK
@@ -739,6 +770,7 @@ class MyFuncs {
         }
         if (message.author.bot) {
             if (isOutputLog) console.log("知らないbotとはお話しちゃいけないって言われました");
+            if (isOutputLog) console.log(message.content);
             return false;
         }
         // 指定のサーバー以外では反応しないようにする
