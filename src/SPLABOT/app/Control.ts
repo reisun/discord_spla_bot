@@ -403,6 +403,8 @@ export class Controller {
             newMember[i].name = newMember[i].name.replace(/[ 　]+/, "_");
         }
 
+        // TODO ロール決めの際の他の文字も空白はアンスコにしないと駄目そう？
+
         const updRet = (await this.connectedDB.PlayUser.updateOne(
             query,
             {
@@ -697,6 +699,17 @@ export class Controller {
         // 送信成功を伝えるDM
         result.sendList.push(MyFuncs.createReply(eMessage.C04_DMSuccess,));
         return result;
+
+        // TODO このエラーの解決 ⇒ quick poll に送ろうとしてエラーになる模様 ⇒ メンバーDB保存前にあらかじめチェックできないか？
+    //     DiscordAPIError[50007]: Cannot send messages to this user
+    // at handleErrors (/home/SPLABOT/node_modules/@discordjs/rest/dist/index.js:687:13)
+    // at process.processTicksAndRejections (/home/SPLABOT/lib/internal/process/task_queues.js:95:5)
+    // at async SequentialHandler.runRequest (/home/SPLABOT/node_modules/@discordjs/rest/dist/index.js:1072:23)
+    // at async SequentialHandler.queueRequest (/home/SPLABOT/node_modules/@discordjs/rest/dist/index.js:913:14)
+    // at async _REST.request (/home/SPLABOT/node_modules/@discordjs/rest/dist/index.js:1218:22)
+    // at async UserManager.createDM (/home/SPLABOT/node_modules/discord.js/src/managers/UserManager.js:60:18) {requestBody: {…}, rawError: {…}, code: 50007, status: 400, method: 'POST', …}
+
+
     }
 
     createVote = async (isDM: boolean, user: MyUser): Promise<MyResult> => {
