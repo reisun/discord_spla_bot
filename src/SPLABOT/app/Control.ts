@@ -5,6 +5,8 @@ import { CommandMessageAnalysis as CommandMessageAnalyser } from "./Utilis";
 import { DBAccesser, User as MyUser, PlayUser, ePlayMode } from "./db";
 import { MessageUtil, eMessage } from "./Message";
 
+// TODO まず平文でも良いから完成させて サーバーに渡したい
+
 // TODO 投票は quick poll に渡すけど、自分であれこれやった方が面白そうだなぁ… メッセージを修正したりできるし
 // TODO メッセージは組み込みにしたい。本文説明（or 導入メッセージ）<改行> 組み込みメッセージ みたいなフォーマットで。
 // TODO 組み込みメッセージで複数をなるべく一つにしたいし、エラーメッセージには色を付けたりした。
@@ -15,7 +17,6 @@ import { MessageUtil, eMessage } from "./Message";
 // TODO ゲーム名とチャット名を同時に出す仕様は面倒なので、どちらかが出る仕様としたい。
 //      ⇒ 共通名前付き にするなら、ちゃんと共通名前でやり取りして、
 //          必要なら議論タイムで名乗るってのがゲームだと思うし。
-// TODO sendRoleのパラメータチェックが甘いっぽい。一行一行ちゃんとチェックするのが良さそう
 //      まずデータの移送を先に済ませてから移送先の変数でチェックしてみよう
 // TODO 再起動後はDBの整合性を考えるとグローバルデータ以外は全件削除が良いか？不具合が出たら /spjクリアをしてもらう運用か？
 //     再起動後のコメント使いまわしでエラーになるため、プレイヤーIDが代わっている可能性
@@ -50,7 +51,7 @@ interface MyResult {
     status: ResultStatus,
     sendList: {
         type: eSendType,
-        userId: string,
+        user: MyUser,
         sendMessage: eMessage,
     }[]
 }
@@ -197,32 +198,44 @@ export class Controller {
 
         // 順番に送信する前提で格納されている場合もあるので
         // 送信ごとに待機する
+        let dmFailedUser: MyUser[] = []
         for (const sendObj of result.sendList) {
             switch (sendObj.type) {
                 case eSendType.sendReply:
                     if (waitExists) {
                         waitExists = false;
-                        await interaction.editReply(sendObj.sendMessage);
+                        await interaction.editReply(sendObj.sendMessage)
+                            .catch(console.error);
                     }
                     else {
-                        await interaction.followUp(sendObj.sendMessage);
+                        await interaction.followUp(sendObj.sendMessage)
+                            .catch(console.error);
                     }
                     break;
                 case eSendType.sendReplyByDM:
                     if (waitExists) {
                         waitExists = false;
-                        await interaction.editReply("DMにて返信しました。");
+                        await interaction.editReply("DMにて返信しました。")
+                            .catch(console.error);
                     }
-                    await Sender.asyncDM(interaction.user, sendObj.sendMessage);
+                    await Sender.asyncDM(interaction.user, sendObj.sendMessage)
+                        .catch(e => interaction.followUp(MessageUtil.getMessage(eMessage.C99_ReplyDMFailed,)))
+                        .catch(console.error);
                     break;
                 case eSendType.sendDMByUserId:
                     if (waitExists) {
                         waitExists = false;
-                        await interaction.editReply("DMに送信しました。");
+                        await interaction.editReply("他ユーザーにDMに送信しました。");
                     }
-                    await Sender.asyncDM_fromUserId(client, sendObj.userId, sendObj.sendMessage);
+                    await Sender.asyncDM_fromUserId(client, sendObj.user.id, sendObj.sendMessage)
+                        .catch(e => dmFailedUser.push(sendObj.user));
                     break;
             }
+        }
+        if (dmFailedUser.length > 0) {
+            const memList = dmFailedUser.map(u => "* " + u.name).join("\n").replace(/\n$/, "");
+            await interaction.followUp(MessageUtil.getMessage(eMessage.C99_OtherDMFailed, memList))
+                .catch(console.error);
         }
     }
 
@@ -270,21 +283,32 @@ export class Controller {
         }
         // 順番に送信する前提で格納されている場合もあるので
         // 送信ごとに待機する
+        let dmFailedUser: MyUser[] = [];
         for (const sendObj of result.sendList) {
             switch (sendObj.type) {
                 case eSendType.sendReply:
-                    await Sender.asyncReply(message, sendObj.sendMessage);
+                    await Sender.asyncReply(message, sendObj.sendMessage)
+                        .catch(console.error);
                     break;
                 case eSendType.sendReplyByDM:
-                    await Sender.asyncDM(message.author, sendObj.sendMessage);
+                    await Sender.asyncDM(message.author, sendObj.sendMessage)
+                        .catch(e => Sender.asyncReply(message, MessageUtil.getMessage(eMessage.C99_ReplyDMFailed,)))
+                        .catch(console.error);
                     break;
                 case eSendType.sendDMByUserId:
-                    await Sender.asyncDM_fromUserId(client, sendObj.userId, sendObj.sendMessage);
+                    await Sender.asyncDM_fromUserId(client, sendObj.user.id, sendObj.sendMessage)
+                        .catch(e => dmFailedUser.push(sendObj.user));
                     break;
                 default:
                     break;
             }
         }
+        if (dmFailedUser.length > 0) {
+            const memList = dmFailedUser.map(u => "* " + u.name).join("\n").replace(/\n$/, "");
+            await Sender.asyncReply(message, MessageUtil.getMessage(eMessage.C99_OtherDMFailed, memList))
+                .catch(console.error);
+        }
+
     }
 
     insertUserData = async (isDM: boolean, user: MyUser): Promise<MyResult> => {
@@ -297,7 +321,7 @@ export class Controller {
         const data = (await this.connectedDB.PlayUser.findOne(query)) as PlayUser | null;
         if (data) {
             // 既にDM
-            return MyFuncs.createErrorReply(eMessage.C01_AlreadyGM);
+            return MyFuncs.createErrorReply(eMessage.C01_AlreadyIns);
         }
 
         // DBに追加
@@ -317,7 +341,7 @@ export class Controller {
         }
 
         // 成功メッセージ
-        return MyFuncs.createSuccessReply(eMessage.C01_BecameGM, user.name);
+        return MyFuncs.createSuccessReply(eMessage.C01_InsertSuccess, user.name);
     }
 
     updateMember = async (isDM: boolean, user: MyUser, inputMenbers: MyUser[]): Promise<MyResult> => {
@@ -399,7 +423,7 @@ export class Controller {
             .map(wMem => wMem.member);
 
         // ここで メンバー名の空白を _ アンスコ に置換しておく
-        for (let i = 0; i < newMember.length; i++){
+        for (let i = 0; i < newMember.length; i++) {
             newMember[i].name = newMember[i].name.replace(/[ 　]+/, "_");
         }
 
@@ -595,6 +619,10 @@ export class Controller {
             return MyFuncs.createErrorReply(eMessage.C04_MemberNothing,);
         }
 
+        if (data.play_data.member_list.length == 0) {
+            return MyFuncs.createErrorReply(eMessage.C04_MemberNothing,);
+        }
+
         // コマンドチェック
         let cmd = orgCmd;
         if (cmd.getValue(1, 0) == null) {
@@ -669,7 +697,7 @@ export class Controller {
         for (const mem of memberRoleDef) {
             result.sendList.push(
                 MyFuncs.createDMToOtherUser(
-                    mem.id,
+                    mem,
                     eMessage.C04_SendRoleTmpl,
                     mem.theName, mem.role
                 )
@@ -683,7 +711,7 @@ export class Controller {
                 for (const mem of memberRoleDef.filter(mem => mem.role == opt.targetRole)) {
                     result.sendList.push(
                         MyFuncs.createDMToOtherUser(
-                            mem.id,
+                            mem,
                             eMessage.C04_SendKnowTmpl,
                             mem.role,
                             opt.complement,
@@ -699,30 +727,19 @@ export class Controller {
         // 送信成功を伝えるDM
         result.sendList.push(MyFuncs.createReply(eMessage.C04_DMSuccess,));
         return result;
-
-        // TODO このエラーの解決 ⇒ quick poll に送ろうとしてエラーになる模様 ⇒ メンバーDB保存前にあらかじめチェックできないか？
-    //     DiscordAPIError[50007]: Cannot send messages to this user
-    // at handleErrors (/home/SPLABOT/node_modules/@discordjs/rest/dist/index.js:687:13)
-    // at process.processTicksAndRejections (/home/SPLABOT/lib/internal/process/task_queues.js:95:5)
-    // at async SequentialHandler.runRequest (/home/SPLABOT/node_modules/@discordjs/rest/dist/index.js:1072:23)
-    // at async SequentialHandler.queueRequest (/home/SPLABOT/node_modules/@discordjs/rest/dist/index.js:913:14)
-    // at async _REST.request (/home/SPLABOT/node_modules/@discordjs/rest/dist/index.js:1218:22)
-    // at async UserManager.createDM (/home/SPLABOT/node_modules/discord.js/src/managers/UserManager.js:60:18) {requestBody: {…}, rawError: {…}, code: 50007, status: 400, method: 'POST', …}
-
-
     }
 
     createVote = async (isDM: boolean, user: MyUser): Promise<MyResult> => {
-        if (isDM){
+        if (isDM) {
             // 投票用のコマンドを作るだけなので DM から送られてもOK
         }
 
-        let result = MyFuncs.createSuccessReply("次のメッセージをコピペしてください。", );
-        let msg ="";
+        let result = MyFuncs.createSuccessReply("次のメッセージをコピペしてください。",);
+        let msg = "";
         msg += "?expoll [今日は誰を追放しますか？]\n";
         msg += " :regional_indicator_g: テストｇ\n";
         msg += " :regional_indicator_j: テストｊ\n";
-        result.sendList.push(MyFuncs.createReply(msg, ));
+        result.sendList.push(MyFuncs.createReply(msg,));
         return result;
     }
 
@@ -772,7 +789,7 @@ export class Controller {
         return GLOBAL_USER_DATA;
     }
 
-    static MessageLog = (msg: Message): void => {
+    static Log = (msg: Message): void => {
         const isDM = MyFuncs.isDM(msg.channel) ? "DM" : "not DM";
         console.log("Recept! msg:%s, sender:%s, DM?:%s", msg.content, msg.author.displayName, isDM)
     }
@@ -796,7 +813,7 @@ class MyFuncs {
             if (isOutputLog) console.log("知らないチャネルだ…");
             return false;
         }
-        if (isOutputLog) Controller.MessageLog(message);
+        if (isOutputLog) Controller.Log(message);
         return true;
     }
 
@@ -810,36 +827,36 @@ class MyFuncs {
 
     static createReply = (msg: eMessage, ...args: unknown[]): {
         type: eSendType,
-        userId: string,
+        user: MyUser,
         sendMessage: eMessage,
     } => {
         return {
             type: eSendType.sendReply,
-            userId: "",
+            user: { id: "", name: "" },
             sendMessage: MessageUtil.getMessage(msg, ...args),
         };
     }
 
     static createReplyDM = (msg: eMessage, ...args: unknown[]): {
         type: eSendType,
-        userId: string,
+        user: MyUser,
         sendMessage: eMessage,
     } => {
         return {
             type: eSendType.sendReplyByDM,
-            userId: "",
+            user: { id: "", name: "" },
             sendMessage: MessageUtil.getMessage(msg, ...args),
         };
     }
 
-    static createDMToOtherUser = (id: string, msg: eMessage, ...args: unknown[]): {
+    static createDMToOtherUser = (user: MyUser, msg: eMessage, ...args: unknown[]): {
         type: eSendType,
-        userId: string,
+        user: MyUser,
         sendMessage: eMessage,
     } => {
         return {
             type: eSendType.sendDMByUserId,
-            userId: id,
+            user: user,
             sendMessage: MessageUtil.getMessage(msg, ...args),
         };
     }

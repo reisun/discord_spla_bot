@@ -1,9 +1,9 @@
 
 export const eMessage = {
-    // StartGM ⇒ DBに登録されたという意味合いに変更
-    C01_BecameGM: "ようこそ、{0}。", //あなたがGM(Game Master😊)になりました。",
-    C01_AlreadyGM: "既に操作者としてデータが登録されています。", //"もうこれ以上のGMにはなれません。",
-    C01_DBError: "予期せぬエラーで操作者として登録できませんでした。ごめんね…", //"予期せぬエラーでGMとして登録できませんでした。ごめんね…。",
+    // DB登録
+    C01_InsertSuccess: "ようこそ、{0}。",
+    C01_AlreadyIns: "既に操作者としてデータが登録されています。",
+    C01_DBError: "予期せぬエラーで操作者として登録できませんでした。ごめんね…",
     // updateMember
     C02_NotAllowFromDM: "チャンネルからコマンドを実行してください。",
     C02_MemberView_Zero: "現在メンバーはいません。",
@@ -34,10 +34,13 @@ export const eMessage = {
     // Vote
     C05_MemberNothing: "メンバーを決定してね😨",
     C05_MemberUpdated: "メンバーが更新されている？ {0} からやり直してね",
-    // end ⇒ DBに登録したデータをクリアする立ち位置に変更
-    C06_ClearMemberData: "登録されたメンバーデータがクリアされました。", // "GMから外れました。おつかれさま！",
-    C06_DataNothing: "既にメンバーデータはクリアされています。", //"GMでは無いのでやめることができません。自動でやめたかも。それとも人間やめますか？",
-    C06_DBError: "予期せぬエラーでメンバーデータがクリアできませんでした。悔しい…", // "予期せぬエラーでGMから外せませんでした。ごめんね…。",
+    // clear memberData
+    C06_ClearMemberData: "登録されたメンバーデータがクリアされました。",
+    C06_DataNothing: "既にメンバーデータはクリアされています。",
+    C06_DBError: "予期せぬエラーでメンバーデータがクリアできませんでした。悔しい…", 
+    // 汎用メッセージ
+    C99_ReplyDMFailed: "DMでの返信に失敗しました。DMは許可されていますか？",
+    C99_OtherDMFailed: "以下のユーザーへのDMに失敗しました。DMが許可されていないかもしれません。\n{0}"
 }
 export type eMessage = (typeof eMessage)[keyof typeof eMessage];
 

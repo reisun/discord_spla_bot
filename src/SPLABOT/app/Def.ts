@@ -114,7 +114,7 @@ export type SubCommandDef = {
 // スラッシュコマンドの型がガチガチ過ぎて、こちらの定義⇒discord.jsの定義への変換が
 // めんどくさくてあほらしい…
 // こちらで利用することはあきらめて
-// ”スラッシュコマンド登録リクエストのBodyの型（笑うところ）”で定義してしまう
+// スラッシュコマンド登録リクエストで使用するBodyの型(???) で定義してしまう
 export const COMMAND_DEF_LIST: RESTPostAPIChatInputApplicationCommandsJSONBody[] = [
     // .set～() は 加工後の SlashCommandBuilder が戻り値になっているので
     // 数珠つなぎにできるみたい。
@@ -123,11 +123,11 @@ export const COMMAND_DEF_LIST: RESTPostAPIChatInputApplicationCommandsJSONBody[]
         .setName(eCommands.Member)
         .setDescription("メンバーを参照したり追加・削除ができます。")
         .addSubcommand(subcmd => subcmd
-            .setName("show")
+            .setName("/show")
             .setDescription("現在のメンバーを参照します。")
         )
         .addSubcommand(subcmd => subcmd
-            .setName("edit")
+            .setName("/edit")
             .setDescription("メンバーを追加・削除します。")
             .forEach(range(1, 9), (subcmd, i) => subcmd
                 .addUserOption(opt => opt
@@ -142,11 +142,11 @@ export const COMMAND_DEF_LIST: RESTPostAPIChatInputApplicationCommandsJSONBody[]
         .setName(eCommands.SuggestRole)
         .setDescription("名前・役職の割り振りを作成できます。")
         .addSubcommand(subcmd => subcmd
-            .setName("again")
+            .setName("/again")
             .setDescription("前回と同じ条件で割り振りを作成できます。\n（このコマンドめんどくさいもんね）")
         )
         .addSubcommand(subcmd => subcmd
-            .setName("create")
+            .setName("/create")
             .setDescription("割り振りを作成します。")
             .addStringOption(opt => opt
                 .setName("name")
