@@ -1,5 +1,8 @@
 
 export const eMessage = {
+    // 汎用
+    C00_NoData: "データがありませんでした。\n最初から操作しなおしてください。",
+    C00_DataVersionNotSame: "保存中のデータ構成が古いためデータがクリアされました。\n最初から操作しなおしてください。",
     // DB登録
     C01_InsertSuccess: "ようこそ、{0}。",
     C01_AlreadyIns: "既に操作者としてデータが登録されています。",
@@ -31,6 +34,7 @@ export const eMessage = {
     C04_SendRoleTmpl: "…\n次の人狼が始まります。\n\nあなたの名前と役職は\n名前：**{0}**\n役職：**{1}**\nです。",
     C04_SendKnowTmpl: "…\n**{0}** のあなたにお知らせがあります。\n**{1}** は **{2}** です。",
     C04_DMSuccess: "メンバーにDMしました。",
+    C04_DBError: "予期せぬエラーで送信できませんでした。力不足で申し訳…", 
     // Vote
     C05_MemberNothing: "メンバーを決定してね😨",
     C05_MemberUpdated: "メンバーが更新されている？ {0} からやり直してね",
@@ -41,12 +45,12 @@ export const eMessage = {
     // 汎用メッセージ
     C99_ReplyDMFailed: "DMでの返信に失敗しました。DMは許可されていますか？",
     C99_OtherDMFailed: "以下のユーザーへのDMに失敗しました。DMが許可されていないかもしれません。\n{0}"
-}
-export type eMessage = (typeof eMessage)[keyof typeof eMessage];
+} as const;
+export type eMessage = (typeof eMessage)[keyof typeof eMessage] | string;
 
 export class MessageUtil {
-    static getMessage = (eMessage: eMessage, ...args: unknown[]) => {
-        let msg = eMessage;
+    static getMessage = (eMessage: eMessage | string, ...args: unknown[]) => {
+        let msg = eMessage.concat(); // コピー
         args.forEach((val, idx) => {
             let regx = new RegExp(`\\{${idx}\\}`, "g");
             msg = msg.replace(regx, val?.toString() ?? "");

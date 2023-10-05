@@ -1,11 +1,11 @@
 import env from "../inc/env.json";
 import {
-    Client, Message, Interaction, Events, GatewayIntentBits, Partials,
+    Client, Events, GatewayIntentBits, Partials,
     // ↓ discord WebAPI
     REST, Routes,
 } from 'discord.js';
 import { Controller } from "./Control"
-import { COMMAND_DEF_LIST as MY_COMMANDS } from "./Def";
+import { COMMAND_JSONBODYS } from "./Commmands";
 
 console.log('import finished!');
 
@@ -51,7 +51,7 @@ client.once('ready', async () => {
             // コマンド追加
             await rest.put(
                 Routes.applicationGuildCommands(client.application!.id, servId),
-                { body: MY_COMMANDS },
+                { body: COMMAND_JSONBODYS },
             );
         }
         {

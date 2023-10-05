@@ -1,16 +1,18 @@
-import { EnumTypeGuard, eCommands } from "./Def"
+import { eCommands, isCommand } from "./Commmands"
+import { User as MyUser } from "./db"
 
-export class CommandMessageAnalysis {
+
+export class CommandMessageAnalyser {
     private _value: string[][];
     constructor(public orgString: string) {
-        this._value = orgString.split("\n").map(elm => 
+        this._value = orgString.split("\n").map(elm =>
             // 半角 or 全角 のスペースがパラメータの区切りとする
             elm.split(/[ 　]+/)
-            );
+        );
     }
     get command(): eCommands | null {
         const v = this.getValue(0, 0)?.replace(/^\//, "");
-        return EnumTypeGuard.isMyCommands(v) ? v : null;
+        return isCommand(v) ? v : null;
     }
     getValue(rowIdx: number, itemIdx: number): string | null {
         return this._value.at(rowIdx)?.at(itemIdx) ?? null;
@@ -34,7 +36,44 @@ export class CommandMessageAnalysis {
         return this._value.length;
     }
 
-    static isMention(value: string) {
-        return /^@.*/g.test(value);
+    parseMemberRoleDef = (memberList: MyUser[]): {
+        id: string,
+        name: string,
+        alphabet: string,
+        theName: string,
+        role: string,
+    }[] => {
+        const cmd = this;
+
+        let memberRoleDef: {
+            id: string,
+            name: string,
+            alphabet: string,
+            theName: string,
+            role: string,
+        }[] = [];
+
+        for (const dataMem of memberList) {
+            for (let i = 1; i < cmd.getLineNum(); i++) {
+                if (cmd.getLength(i) != 3)
+                    continue;
+
+                const theName = <string>cmd.getValue(i, 0);
+                const role = <string>cmd.getValue(i, 1);
+                const nameInCmd = <string>cmd.getValue(i, 2);
+                if (dataMem.name != nameInCmd)
+                    continue;
+
+                memberRoleDef.push({
+                    id: dataMem.id,
+                    alphabet: theName.trim().slice(-1),
+                    name: dataMem.name,
+                    theName: theName,
+                    role: role,
+                });
+            }
+        }
+
+        return memberRoleDef;
     }
 }

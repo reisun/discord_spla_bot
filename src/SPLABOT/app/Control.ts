@@ -1,9 +1,11 @@
-import { Client, Channel, User, Message, ChannelType, Interaction, TextChannel, DMChannel, TextBasedChannel, ApplicationCommandOptionType, ApplicationCommandOptionBase, ApplicationCommandType } from 'discord.js';
+import { Client, Channel, User, Message, ChannelType, Interaction, TextBasedChannel, ApplicationCommandOptionType, } from 'discord.js';
 import env from "../inc/env.json";
-import { EnumTypeGuard, MAX_MEMBER_COUNT, eCommands } from "./Def"
-import { CommandMessageAnalysis as CommandMessageAnalyser } from "./Utilis";
-import { DBAccesser, User as MyUser, PlayUser, ePlayMode } from "./db";
+import { eCommands, isCommand } from "./Commmands"
+import { MAX_MEMBER_COUNT, ALPHABET_TABLE } from "./Def"
+import { CommandMessageAnalyser } from "./Utilis";
+import { DBAccesser, User as MyUser, PlayUser, PlayUserUtil, PlayUserVersion, ePlayMode } from "./db";
 import { MessageUtil, eMessage } from "./Message";
+import { MatchKeysAndValues } from 'mongodb';
 
 // TODO まず平文でも良いから完成させて サーバーに渡したい
 
@@ -23,37 +25,38 @@ import { MessageUtil, eMessage } from "./Message";
 //     まぁBOT相手でそうなっているだけだから実際の仕様では問題ない……になると予見しているが
 // TODO controler　は inner と外用で分けたい。例外処理も controlerがわで
 
-const GLOBAL_USER_DATA = {
-    player_id: "-1",
-    player: { id: "-1", name: "global" },
-    player_last_ope_datatime: new Date(),
-    play_mode: ePlayMode.SplaJinro,
-    play_data: {
-        member_list: [],
-        suggestRoleTemplate: `${eCommands.SuggestRole} あきと 人狼 狂人`,
-    }
+const getGlobalUserData = (): PlayUser => {
+    const globalUser = { id: "-1", name: "global" };
+    let base = PlayUserUtil.createNewPlayUserObj(globalUser);
+    base.play_mode = ePlayMode.SplaJinro;
+    base.play_data.prevSuggestRoleCommandString = `${eCommands.SuggestRole} あきと 人狼 狂人`;
+    return base;
 };
 
 const eSendType = {
     sendReply: 1,
     sendReplyByDM: 2,
     sendDMByUserId: 3,
-}
+} as const;
 type eSendType = (typeof eSendType)[keyof typeof eSendType];
 
 const MySuccess = "success";
-type MySuccess = "success";
 const MyError = "error";
-type MyError = "error";
-type ResultStatus = MySuccess | MyError;
-
-interface MyResult {
-    status: ResultStatus,
+type MyResult = {
+    status: typeof MySuccess | typeof MyError,
     sendList: {
         type: eSendType,
         user: MyUser,
         sendMessage: eMessage,
     }[]
+}
+
+type asyncGetPlayUesrResult = {
+    data: PlayUser,
+    getRet: null,
+} | {
+    data: null,
+    getRet: MyResult,
 }
 
 class Sender {
@@ -105,8 +108,6 @@ export class Controller {
     }
     asyncSetup = async () => {
         this._dbAccesser = await DBAccesser.connect();
-        // グローバルデータが無ければメソッド内で作成してくれるので、これを呼んでおく
-        await this.getGlobalData();
         console.log('bot MyDB connected!');
     }
 
@@ -114,7 +115,7 @@ export class Controller {
         if (!interaction.isCommand())
             return;
 
-        if (!EnumTypeGuard.isMyCommands(interaction.commandName))
+        if (!isCommand(interaction.commandName))
             return;
 
         // Discord API の仕様上 3秒以内に何らかのレスポンスを返す必要あり
@@ -317,24 +318,16 @@ export class Controller {
             console.log("dmで受信");
         }
 
-        const query = { player_id: user.id };
-        const data = (await this.connectedDB.PlayUser.findOne(query)) as PlayUser | null;
-        if (data) {
-            // 既にDM
+        const {data, }= await MyFuncs.asyncGetPlayUesr(this.connectedDB, user,);
+        if (data){
+            // データがあったらエラー
             return MyFuncs.createErrorReply(eMessage.C01_AlreadyIns);
         }
 
         // DBに追加
-        const insData: PlayUser = {
-            player_id: user.id,
-            player: user,
-            player_last_ope_datatime: new Date(),
-            play_mode: ePlayMode.SplaJinro,
-            play_data: {
-                member_list: [],
-                suggestRoleTemplate: "",
-            }
-        }
+        const insData: PlayUser = PlayUserUtil.createNewPlayUserObj(user);
+        insData.play_mode = ePlayMode.SplaJinro;
+
         const insRet = (await this.connectedDB.PlayUser.insertOne(insData));
         if (!insRet.acknowledged) {
             return MyFuncs.createErrorReply(eMessage.C01_DBError);
@@ -356,8 +349,7 @@ export class Controller {
             sendList: [],
         }
 
-        const query = { player_id: user.id };
-        let data = (await this.connectedDB.PlayUser.findOne(query)) as PlayUser | null;
+        let {data, } = await MyFuncs.asyncGetPlayUesr(this.connectedDB, user);
         if (!data) {
             // GMで無ければこちらで startGM してしまう
             const resultStartGM = await this.insertUserData(isDM, user);
@@ -366,11 +358,30 @@ export class Controller {
             }
             result.sendList = resultStartGM.sendList;
 
-            data = (await this.connectedDB.PlayUser.findOne(query)) as PlayUser | null;
+            data = (await MyFuncs.asyncGetPlayUesr(this.connectedDB, user)).data;
             if (!data) {
                 throw new Error("論理エラー");
             }
         }
+
+        //         // 現状はデフォルトでメンバーのみ削除
+        // // メンバーデータを削除
+        // const updRet = (await this.connectedDB.PlayUser.updateOne(
+        //     query,
+        //     {
+        //         $set: {
+        //             'play_data.member_list': [],
+        //         },
+        //         $currentDate: {
+        //             player_last_ope_datatime: true,
+        //         },
+        //     },
+        // ));
+
+        // if (!updRet.acknowledged || updRet.modifiedCount == 0) {
+        //     return MyFuncs.createErrorReply(eMessage.C06_DBError,);
+        // }
+
 
         if (inputMenbers.length == 0) {
             // メンションが０人なら参照モード
@@ -428,20 +439,11 @@ export class Controller {
         }
 
         // TODO ロール決めの際の他の文字も空白はアンスコにしないと駄目そう？
+        const updSuccess = await MyFuncs.asyncUpdatePlayUser(this.connectedDB, user, {
+            'play_data.member_list': newMember,
+        });
 
-        const updRet = (await this.connectedDB.PlayUser.updateOne(
-            query,
-            {
-                $set: {
-                    'play_data.member_list': newMember,
-                },
-                $currentDate: {
-                    player_last_ope_datatime: true,
-                },
-            },
-        ));
-
-        if (!updRet.acknowledged || updRet.modifiedCount == 0) {
+        if (!updSuccess) {
             result.status = MyError;
             result.sendList.push(MyFuncs.createReply(eMessage.C02_DBError,));
             return result;
@@ -464,11 +466,11 @@ export class Controller {
         }
 
         // ユーザーデータ取得
-        const query = { player_id: user.id };
-        let data = (await this.connectedDB.PlayUser.findOne(query)) as PlayUser | null;
+        let {data, getRet} = await MyFuncs.asyncGetPlayUesr(this.connectedDB, user,
+            eMessage.C03_MemberNothing,)
         if (!data) {
             // GMで無ければメンバー追加へ誘導（メンバー追加コマンドでGMになれるので、ここではGMにさせてあげないんだから///）
-            return MyFuncs.createErrorReply(eMessage.C03_MemberNothing,);
+            return getRet!;
         }
 
         // 複数のメッセージが入る場合があるので先に作っておく
@@ -483,7 +485,7 @@ export class Controller {
         if (cmd.getValue(0, 1) == null) {
             // 引数が１個も無い場合は前回のデータを採用
             uesPredata = true;
-            cmd = new CommandMessageAnalyser(data?.play_data.suggestRoleTemplate ?? "");
+            cmd = new CommandMessageAnalyser(data?.play_data.prevSuggestRoleCommandString ?? "");
             if (cmd.isEmpty()) {
                 return MyFuncs.createErrorReply(eMessage.C03_NonAgainData,);
             }
@@ -544,7 +546,7 @@ export class Controller {
         });
 
         // アルファベットテーブルをランダムに回してメンバーの数で抽出
-        let alpList = ["A", "B", "F", "H", "W", "X", "Y", "Z", "N", "L", "Q", "S",];
+        let alpList = ALPHABET_TABLE.concat();
         for (let i = 0; MyFuncs.getRandomInt(alpList.length); i++) {
             alpList.push(alpList.shift()!);
         }
@@ -570,7 +572,7 @@ export class Controller {
         memberRoleStr = workMemberList.map(obj =>
             MessageUtil.getMessage(eMessage.C03_inner_MemberFormat,
                 obj.dispName,
-                obj.role.padEnd(roleMaxlen, "　"), // 役職は全角だろうという前提
+                obj.role.padEnd(roleMaxlen, "　"), // 役職は全角だろうという前提で文字幅調整
                 obj.member.name),
         ).join("\n");
 
@@ -585,20 +587,12 @@ export class Controller {
 
         if (!uesPredata) {
             // 今回のパラメータを記憶
-            const updRet = (await this.connectedDB.PlayUser.updateOne(
-                query,
-                {
-                    $set: {
-                        'play_data.suggestRoleTemplate': cmd.orgString,
-                    },
-                    $currentDate: {
-                        player_last_ope_datatime: true,
-                    },
-                },
-            ));
+            const updSuccess = await MyFuncs.asyncUpdatePlayUser(this.connectedDB, user, {
+                    'play_data.prevSuggestRoleCommandString': cmd.orgString,
+                });
             // これがDBエラーでもメイン処理に弊害は無いのでログだけにする
-            if (!updRet.acknowledged || updRet.modifiedCount == 0) {
-                console.log("play_data.suggestRoleTemplate update failed. player_id:" + query.player_id);
+            if (!updSuccess) {
+                console.log("play_data.prevSuggestRoleCommandString update failed. player_id:" + user.id);
             }
         }
         return result;
@@ -613,13 +607,8 @@ export class Controller {
         }
 
         // ユーザーデータ取得
-        const query = { player_id: user.id };
-        let data = (await this.connectedDB.PlayUser.findOne(query)) as PlayUser | null;
-        if (!data) {
-            return MyFuncs.createErrorReply(eMessage.C04_MemberNothing,);
-        }
-
-        if (data.play_data.member_list.length == 0) {
+        let {data, getRet} = await MyFuncs.asyncGetPlayUesr(this.connectedDB, user, );
+        if (!data || data.play_data.member_list.length == 0) {
             return MyFuncs.createErrorReply(eMessage.C04_MemberNothing,);
         }
 
@@ -633,33 +622,8 @@ export class Controller {
             return MyFuncs.createErrorReply(eMessage.C04_MemberArgNonMatch, eCommands.SuggestRole);
         }
 
-        // エラーチェックと合わせて情報を保持してしまう
-        let memberRoleDef: {
-            id: string,
-            name: string,
-            theName: string,
-            role: string,
-        }[] = [];
-
-        for (const dataMem of data.play_data.member_list) {
-            for (let i = 1; i < cmd.getLineNum(); i++) {
-                if (cmd.getLength(i) != 3)
-                    continue;
-
-                const theName = <string>cmd.getValue(i, 0);
-                const role = <string>cmd.getValue(i, 1);
-                const nameInCmmand = <string>cmd.getValue(i, 2);
-                if (dataMem.name != nameInCmmand)
-                    continue;
-
-                memberRoleDef.push({
-                    id: dataMem.id,
-                    name: dataMem.name,
-                    theName: theName,
-                    role: role,
-                });
-            }
-        }
+        // コマンド情報：メンバー部分 のパース
+        const memberRoleDef = cmd.parseMemberRoleDef(data.play_data.member_list);
 
         // 現在登録されているメンバーがコマンドに入って無ければエラー
         if (data.play_data.member_list.length != memberRoleDef.length) {
@@ -686,6 +650,14 @@ export class Controller {
                     complement: optArray[0],
                 });
             }
+        }
+
+        // 送信コマンドを記憶する
+        const updSuccess = await MyFuncs.asyncUpdatePlayUser(this.connectedDB, user, {
+            'play_data.prevSendRoleCommandString': cmd.orgString,
+        });
+        if (!updSuccess) {
+            return MyFuncs.createErrorReply(eMessage.C04_DBError,);
         }
 
         // 各メンバーにDM
@@ -729,20 +701,44 @@ export class Controller {
         return result;
     }
 
+    /**
+     * 投票作成
+     * @param isDM 
+     * @param user 
+     * @returns 
+     */
     createVote = async (isDM: boolean, user: MyUser): Promise<MyResult> => {
         if (isDM) {
             // 投票用のコマンドを作るだけなので DM から送られてもOK
         }
 
+        // ユーザーデータ取得
+        const {data, getRet} = await MyFuncs.asyncGetPlayUesr(this.connectedDB, user,
+            eMessage.C05_MemberNothing,);
+        if (!data){
+            return getRet!;
+        }
+
+        // 前回のメンバー通知コマンドをパース
+        const memberRoleDef = new CommandMessageAnalyser(data.play_data.prevSendRoleCommandString)
+            .parseMemberRoleDef(data.play_data.member_list);
+
         let result = MyFuncs.createSuccessReply("次のメッセージをコピペしてください。",);
         let msg = "";
         msg += "?expoll [今日は誰を追放しますか？]\n";
-        msg += " :regional_indicator_g: テストｇ\n";
-        msg += " :regional_indicator_j: テストｊ\n";
+        memberRoleDef.forEach(memRole => {
+            msg += ` :regional_indicator_${memRole.alphabet.toLowerCase()}: ${memRole.theName}\n`;
+        })
         result.sendList.push(MyFuncs.createReply(msg,));
         return result;
     }
 
+    /**
+     * ユーザーデータ削除
+     * @param isDM 
+     * @param user 
+     * @returns 
+     */
     clearUserData = async (isDM: boolean, user: MyUser): Promise<MyResult> => {
         if (isDM) {
             // でもOK
@@ -750,43 +746,20 @@ export class Controller {
         }
 
         // ユーザーデータ取得
-        const query = { player_id: user.id };
-        let data = (await this.connectedDB.PlayUser.findOne(query)) as PlayUser | null;
+        const {data, getRet} = await MyFuncs.asyncGetPlayUesr(this.connectedDB, user,);
         if (!data || data.play_data.member_list.length == 0) {
             return MyFuncs.createErrorReply(eMessage.C06_DataNothing,);
         }
 
-        // メンバーデータを削除
-        const updRet = (await this.connectedDB.PlayUser.updateOne(
-            query,
-            {
-                $set: {
-                    'play_data.member_list': [],
-                },
-                $currentDate: {
-                    player_last_ope_datatime: true,
-                },
-            },
-        ));
+        // TODO clear data は メンバーをクリアだけじゃなく全部クリアする旨をREADMEなどで更新
+        const query = {player_id: user.id};
+        const delRet = await this.connectedDB.PlayUser.deleteMany(query);
 
-        if (!updRet.acknowledged || updRet.modifiedCount == 0) {
+        if (!delRet.acknowledged || delRet.deletedCount == 0) {
             return MyFuncs.createErrorReply(eMessage.C06_DBError,);
         }
 
         return MyFuncs.createSuccessReply(eMessage.C06_ClearMemberData,);
-    }
-
-    getGlobalData = async (): Promise<PlayUser> => {
-        const query = { player_id: GLOBAL_USER_DATA.player_id };
-        const data = (await this.connectedDB.PlayUser.findOne(query)) as PlayUser | null;
-        if (data) {
-            return data;
-        }
-        const insRet = (await this.connectedDB.PlayUser.insertOne(GLOBAL_USER_DATA));
-        if (!insRet.acknowledged) {
-            throw new Error("global data insert failed.");
-        }
-        return GLOBAL_USER_DATA;
     }
 
     static Log = (msg: Message): void => {
@@ -825,10 +798,56 @@ class MyFuncs {
         return Math.floor(Math.random() * (max + 1));
     }
 
+    //#region DBユーティリティ
+
+    /**
+     * データを取得する
+     * データのバージョンがソースと異なる場合はデータをクリアする
+     * @param connectedDB 
+     * @param user 
+     * @returns 
+     */
+    static async asyncGetPlayUesr(
+        connectedDB: DBAccesser,
+        user: MyUser,
+        nodataMsg: eMessage = eMessage.C00_NoData,
+        notSameVersionMsg: eMessage = eMessage.C00_DataVersionNotSame,
+        ): Promise<asyncGetPlayUesrResult> {
+        const query = { player_id: user.id };
+        let data = (await connectedDB.PlayUser.findOne(query)) as PlayUser | null;
+        if (!data) {
+            return { data: null, getRet: MyFuncs.createErrorReply(nodataMsg)};
+        }
+        if (data.version != PlayUserVersion) {
+            const delRet = await connectedDB.PlayUser.deleteMany(query);
+            return { data: null, getRet: MyFuncs.createErrorReply(notSameVersionMsg)};
+        }
+        return { data: data, getRet: null};
+    }
+
+    static async asyncUpdatePlayUser(connectedDB: DBAccesser, user: MyUser, updateQuery: MatchKeysAndValues<PlayUser>): Promise<boolean> {
+        const query = { player_id: user.id };
+        const updRet = (await connectedDB.PlayUser.updateOne(
+            query,
+            {
+                $set: updateQuery,
+                $currentDate: {
+                    player_last_ope_datatime: true,
+                },
+            },
+        ));
+        if (!updRet.acknowledged || updRet.modifiedCount == 0) {
+            return false;
+        }
+        return true;
+    }
+    //#endregion
+
+    //#region  リザルト作成ユーティリティ
     static createReply = (msg: eMessage, ...args: unknown[]): {
         type: eSendType,
         user: MyUser,
-        sendMessage: eMessage,
+        sendMessage: string,
     } => {
         return {
             type: eSendType.sendReply,
@@ -840,7 +859,7 @@ class MyFuncs {
     static createReplyDM = (msg: eMessage, ...args: unknown[]): {
         type: eSendType,
         user: MyUser,
-        sendMessage: eMessage,
+        sendMessage: string,
     } => {
         return {
             type: eSendType.sendReplyByDM,
@@ -852,7 +871,7 @@ class MyFuncs {
     static createDMToOtherUser = (user: MyUser, msg: eMessage, ...args: unknown[]): {
         type: eSendType,
         user: MyUser,
-        sendMessage: eMessage,
+        sendMessage: string,
     } => {
         return {
             type: eSendType.sendDMByUserId,
@@ -873,5 +892,5 @@ class MyFuncs {
             sendList: [MyFuncs.createReply(msg, ...args)],
         }
     }
-
+    //#endregion
 }
