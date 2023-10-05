@@ -157,11 +157,11 @@ export const COMMAND_JSONBODYS: RESTPostAPIChatInputApplicationCommandsJSONBody[
         .toJSON(),
     new SlashCommandBuilder()
         .setName(eCommands.CreateVote)
-        .setDescription("投票Bot「Quick poll」で利用できる、投票用コマンドを作成します。")
+        .setDescription("前回メンバーに知らせた役職を元に、投票フォームを作成します。")
         .toJSON(),
     new SlashCommandBuilder()
         .setName(eCommands.ClearMemberData)
-        .setDescription("ユーザーごとに保存されているメンバー情報をクリアします。")
+        .setDescription("ユーザーごとに保存されている情報をクリアします。（メンバーをクリアしたい時や、不具合時に利用する想定）")
         .toJSON(),
 ];
 
