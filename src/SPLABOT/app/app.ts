@@ -5,7 +5,7 @@ import {
     REST, Routes,
 } from 'discord.js';
 import { Controller } from "./Control"
-import { COMMAND_JSONBODYS } from "./Commmands";
+import { COMMAND_JSONBODYS } from "./Commands";
 
 console.log('import finished!');
 
@@ -15,6 +15,7 @@ const client = new Client({
         GatewayIntentBits.GuildMessages,
         GatewayIntentBits.DirectMessages,
         GatewayIntentBits.MessageContent,
+        GatewayIntentBits.GuildMessageReactions
     ],
     // BotへのDMを受信するには以下が必要みたい
     // thanks!
@@ -93,6 +94,19 @@ client.on(Events.InteractionCreate, async interaction => {
     }
     try {
         await controller.processCommand(client, interaction);
+    }
+    catch (e) {
+        console.log(e);
+    }
+});
+
+// リアクション
+client.on(Events.MessageReactionAdd, async (reaction, user) => {
+    if (!controller.initialized) {
+        return;
+    }
+    try {
+        await controller.processReaction(client, reaction, user);
     }
     catch (e) {
         console.log(e);

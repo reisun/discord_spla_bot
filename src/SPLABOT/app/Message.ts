@@ -3,6 +3,9 @@ export const eMessage = {
     // 汎用
     C00_NoData: "データがありませんでした。\n最初から操作しなおしてください。",
     C00_DataVersionNotSame: "保存中のデータ構成が古いためデータがクリアされました。\n最初から操作しなおしてください。",
+    C00_ReplyDM: "DMで返信しました。",
+    C00_SendDMOtherUser: "他ユーザーにDMしました。",
+    C00_VoteOneOnOne: "(1人1票)",
     // DB登録
     C01_InsertSuccess: "ようこそ、{0}。",
     C01_AlreadyIns: "既に操作者としてデータが登録されています。",
@@ -36,6 +39,7 @@ export const eMessage = {
     C04_DMSuccess: "メンバーにDMしました。",
     C04_DBError: "予期せぬエラーで送信できませんでした。力不足で申し訳…", 
     // Vote
+    C05_NotAllowFromDM: "チャンネルからコマンドを実行してください。",
     C05_MemberNothing: "メンバーを決定してね😨",
     C05_MemberUpdated: "メンバーが更新されている？ {0} からやり直してね",
     // clear memberData

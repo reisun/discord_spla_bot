@@ -90,23 +90,9 @@ export type eCommands = (typeof eCommands)[keyof typeof eCommands];
 
 export const isCommand = (v: any): v is eCommands => Object.values(eCommands).some(elm => elm === v);
 
-// export type CommandDef = {
-//     type: ApplicationCommandType.ChatInput,
-//     name: eCommands,
-//     desc: string,
-//     options?: CommandOptionDef[],
-// };
-// export type CommandOptionDef = SubCommandDef;
-// export type SubCommandDef = {
-//     type: ApplicationCommandOptionType.Subcommand,
-//     name: string,
-//     desc: string,
-//     options?: CommandOptionDef[],
-// }
-
 // スラッシュコマンドの型がガチガチ過ぎて、こちらの定義⇒discord.jsの定義への変換が
 // めんどくさくてあほらしい…
-// こちらで利用することはあきらめて
+// 上手い感じに利用しようと考えたがあきらめて
 // スラッシュコマンド登録リクエストで使用するBodyの型(???) で定義してしまう
 export const COMMAND_JSONBODYS: RESTPostAPIChatInputApplicationCommandsJSONBody[] = [
     // .set～() は 加工後の SlashCommandBuilder が戻り値になっているので

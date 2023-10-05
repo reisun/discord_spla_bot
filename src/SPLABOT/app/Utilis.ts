@@ -1,4 +1,4 @@
-import { eCommands, isCommand } from "./Commmands"
+import { eCommands, isCommand } from "./Commands"
 import { User as MyUser } from "./db"
 
 
