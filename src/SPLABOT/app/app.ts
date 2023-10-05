@@ -28,7 +28,30 @@ const rest = new REST({
 
 const controller = new Controller();
 
+const asyncAddCommand = async (servId: string) => {
+    await rest.put(
+        Routes.applicationGuildCommands(client.application!.id, servId),
+        { body: COMMAND_JSONBODYS },
+    );
+}
+const asyncRemoveCommand = async (servId: string) => {
+    const guild = client.guilds.cache.get(servId);
+    let commandList = await guild?.commands.fetch();
+    if (commandList) {
+        for (const cmd of commandList.values()) {
+            if (cmd.applicationId == client.application!.id) {
+                await guild?.commands.delete(cmd.id);
+            }
+        }
+    }
+}
 
+const asyncUpdateCommand = async (servId: string) => {
+    // 古いコマンドかもしれないので、同じAppIDのコマンドは削除
+    await asyncRemoveCommand(servId);
+    // コマンド追加
+    await asyncAddCommand(servId);
+}
 
 client.once('ready', async () => {
     console.log('discord connected!');
@@ -37,33 +60,9 @@ client.once('ready', async () => {
     // TODO version の値で更新するかチェックしたい
     // TODO appliation commands 内の create でコマンド追加もできるのでは？
     try {
-        // サーバーごとにループ
+        // 認可サーバーごとにループ
         for (const servId of env.allowed_serv) {
-            // 古いコマンドかもしれないので、同じAppIDのコマンドは削除
-            const guild = client.guilds.cache.get(servId);
-            let commandList = await guild?.commands.fetch();
-            if (commandList) {
-                for (const cmd of commandList.values()) {
-                    if (cmd.applicationId == client.application!.id) {
-                        await guild?.commands.delete(cmd.id);
-                    }
-                }
-            }
-            // コマンド追加
-            await rest.put(
-                Routes.applicationGuildCommands(client.application!.id, servId),
-                { body: COMMAND_JSONBODYS },
-            );
-        }
-        {
-            let commandList = await client.application?.commands.fetch();
-            if (commandList) {
-                for (const cmd of commandList.values()) {
-                    if (cmd.applicationId == client.application!.id) {
-                        await client.application?.commands.delete(cmd.id);
-                    }
-                }
-            }
+            asyncUpdateCommand(servId);
         }
         console.log('slash command refresh success!');
     } catch (error) {
@@ -72,6 +71,14 @@ client.once('ready', async () => {
 
     // ---アプリ初期処理
     await controller.asyncSetup();
+});
+
+client.on(Events.GuildCreate, guild => {
+    asyncAddCommand(guild.id);
+});
+
+client.on(Events.GuildDelete, guild => {
+    asyncRemoveCommand(guild.id);
 });
 
 // メッセージ受信時

@@ -7,9 +7,7 @@ import { DBAccesser, User as MyUser, PlayUser, PlayUserUtil, PlayUserVersion, eP
 import { MessageUtil, eMessage } from "./Message";
 import { MatchKeysAndValues } from 'mongodb';
 
-// TODO まず平文でも良いから完成させて サーバーに渡したい
-
-// TODO 投票は quick poll に渡すけど、自分であれこれやった方が面白そうだなぁ… メッセージを修正したりできるし
+// TODO 投票で 中のメッセージを修正したりすると面白いか？
 // TODO メッセージは組み込みにしたい。本文説明（or 導入メッセージ）<改行> 組み込みメッセージ みたいなフォーマットで。
 // TODO 組み込みメッセージで複数をなるべく一つにしたいし、エラーメッセージには色を付けたりした。
 // TODO 普通の人狼でも使えるようにしたい
@@ -187,7 +185,7 @@ export class Controller {
             }
         }
         finally {
-            await interaction.deleteReply()
+            await interaction.editReply("------")
                 .catch(console.error);
         }
 
@@ -202,7 +200,7 @@ export class Controller {
                     break;
                 case eSendType.sendReplyByDM:
                     await Sender.asyncDM(interaction.user, sendObj.sendMessage)
-                        .catch(e => interaction.followUp(MessageUtil.getMessage(eMessage.C99_ReplyDMFailed,)))
+                        .catch(e => Sender.asyncSendSameChannel(interaction.channel!, MessageUtil.getMessage(eMessage.C00_ReplyDMFailed,)))
                         .catch(console.error);
                     break;
                 case eSendType.sendDMByUserId:
@@ -214,7 +212,7 @@ export class Controller {
         if (dmFailedUser.length > 0) {
             const unique = dmFailedUser.filter((u, index) => dmFailedUser.findIndex(v => v.id === u.id) === index);
             const memList = unique.map(u => "* " + u.name).join("\n").replace(/\n$/, "");
-            await Sender.asyncSendSameChannel(interaction.channel!, MessageUtil.getMessage(eMessage.C99_OtherDMFailed, memList))
+            await Sender.asyncSendSameChannel(interaction.channel!, MessageUtil.getMessage(eMessage.C00_OtherDMFailed, memList))
                 .catch(console.error);
         }
     }
@@ -271,7 +269,7 @@ export class Controller {
                     break;
                 case eSendType.sendReplyByDM:
                     await Sender.asyncDM(message.author, sendObj.sendMessage)
-                        .catch(e => Sender.asyncReply(message, MessageUtil.getMessage(eMessage.C99_ReplyDMFailed,)))
+                        .catch(e => Sender.asyncReply(message, MessageUtil.getMessage(eMessage.C00_ReplyDMFailed,)))
                         .catch(console.error);
                     break;
                 case eSendType.sendDMByUserId:
@@ -283,21 +281,106 @@ export class Controller {
             }
         }
         if (dmFailedUser.length > 0) {
-            const memList = dmFailedUser.map(u => "* " + u.name).join("\n").replace(/\n$/, "");
-            await Sender.asyncReply(message, MessageUtil.getMessage(eMessage.C99_OtherDMFailed, memList))
+            const unique = dmFailedUser.filter((u, index) => dmFailedUser.findIndex(v => v.id === u.id) === index);
+            const memList = unique.map(u => "* " + u.name).join("\n").replace(/\n$/, "");
+            await Sender.asyncSendSameChannel(message.channel!, MessageUtil.getMessage(eMessage.C00_OtherDMFailed, memList))
                 .catch(console.error);
         }
-
     }
 
     processReaction = async (
-        client: Client, 
-        reaction: MessageReaction | PartialMessageReaction, 
-        user: User | PartialUser): Promise<void> => {
-        if (!MyFuncs.isUnresponsiveMessage(client, user, reaction.message.guild, true))
-            return;
+        client: Client,
+        reaction: MessageReaction | PartialMessageReaction,
+        user: User | PartialUser
+    ): Promise<void> => {
 
+        // １票のみの制御を作ってみたが重たかったので一旦やめる
+        return;
 
+        // // 自分の反応やBOTの反応は無視する
+        // if (!MyFuncs.isUnresponsiveMessage(client, user, reaction.message.guild, true))
+        //     return;
+
+        // // BOT自身のメッセージに対する反応で無ければ無視する
+        // if (reaction.message.author == null
+        //     || client.user == null
+        //     || reaction.message.author.id != client.user.id) {
+        //     return;
+        // }
+
+        // // BOT自身のメッセージに埋め込みメッセージが無ければ少なくとも投票ではないので無視する
+        // if (!reaction.message.embeds || reaction.message.embeds.length != 1)
+        //     return;
+
+        // // 埋め込みメッセージのフッタに投票を示す文字列が入っていれば処理する
+        // const embed = reaction.message.embeds[0];
+        // const voteMsg = [eMessage.C00_VoteOneOnOne, eMessage.C00_VoteAny]
+        // if (embed.footer == null
+        //     || !voteMsg.some(v => embed.footer!.text.includes(v))
+        // ) {
+        //     return;
+        // }
+
+        // const myid = user.id;
+
+        // const getCacheMyCheckReactions = async () => {
+        //     const allReactions = reaction.message.reactions.cache.map(r => r);
+        //     const myCheckReactions: MessageReaction[] = [];
+        //     for (const r of allReactions) {
+        //         const us = r.users.cache;
+        //         if (us.find(u => u.id == myid))
+        //             myCheckReactions.push(r);
+        //     };
+        //     return myCheckReactions;
+        // }
+
+        // const getNowMyCheckReactions = async () => {
+        //     const allReactions = (await reaction.message.fetch()).reactions.cache.map(r => r);
+        //     const myCheckReactions: MessageReaction[] = [];
+        //     for (const r of allReactions) {
+        //         const us = (await r.users.fetch());
+        //         if (us.find(u => u.id == myid))
+        //             myCheckReactions.push(r);
+        //     };
+        //     return myCheckReactions;
+        // }
+
+        // if (embed.footer.text == eMessage.C00_VoteOneOnOne) {
+        //     // 一人一票
+        //     // ⇒ 直近のリアクション以外は削除
+
+        //     const cacheMyCheckReactions = await getCacheMyCheckReactions();
+        //     if (cacheMyCheckReactions.length <= 1) {
+        //         return;
+        //     }
+
+        //     const removeReaction: MessageReaction[] = [];
+        //     for (const r of cacheMyCheckReactions) {
+        //         if (reaction.emoji.identifier != r.emoji.identifier) {
+        //             removeReaction.push(r);
+        //         }
+        //     }
+
+        //     // 排他処理（当時とは違うものにチェックが入っているなら次のイベントに任せる）
+        //     const nows = await getNowMyCheckReactions();
+        //     for (const now of nows) {
+        //         if (cacheMyCheckReactions.find(cache =>
+        //             cache.emoji.identifier == now.emoji.identifier)) {
+        //         // キャッシュと同じリアクション
+        //         continue;
+        //         }
+        //         // キャッシュにないリアクション
+        //         return;
+        //     }
+
+        //     for (const r of removeReaction) {
+        //         await r.users.remove(await user.fetch());
+        //     }
+        // }
+        // else {
+        //     // 一人複数票あり
+        //     // ⇒ 何もしない
+        // }
     }
 
     insertUserData = async (isDM: boolean, user: MyUser): Promise<MyResult> => {
@@ -714,7 +797,8 @@ export class Controller {
 
         let msg = "";
         memberRoleDef.forEach(memRole => {
-            msg += MyFuncs.createDiscordAlphabetEmoji(memRole.alphabet) + `${memRole.theName}\n`;
+            const emoji = MyFuncs.createDiscordAlphabetEmoji(memRole.alphabet);
+            msg += `${emoji} ${memRole.theName} (${memRole.name})\n`;
         });
 
         // 埋め込みメッセージで投票を作成

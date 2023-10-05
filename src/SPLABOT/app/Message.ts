@@ -5,7 +5,11 @@ export const eMessage = {
     C00_DataVersionNotSame: "保存中のデータ構成が古いためデータがクリアされました。\n最初から操作しなおしてください。",
     C00_ReplyDM: "DMで返信しました。",
     C00_SendDMOtherUser: "他ユーザーにDMしました。",
+    C00_ReplyDMFailed: "DMでの返信に失敗しました。DMは許可されていますか？",
+    C00_OtherDMFailed: "以下のユーザーへのDMに失敗しました。DMが許可されていないかもしれません。\n{0}",
     C00_VoteOneOnOne: "(1人1票)",
+    C00_VoteAny: "(1人複数票OK)",
+
     // DB登録
     C01_InsertSuccess: "ようこそ、{0}。",
     C01_AlreadyIns: "既に操作者としてデータが登録されています。",
@@ -46,9 +50,6 @@ export const eMessage = {
     C06_ClearMemberData: "登録されたメンバーデータがクリアされました。",
     C06_DataNothing: "既にメンバーデータはクリアされています。",
     C06_DBError: "予期せぬエラーでメンバーデータがクリアできませんでした。悔しい…", 
-    // 汎用メッセージ
-    C99_ReplyDMFailed: "DMでの返信に失敗しました。DMは許可されていますか？",
-    C99_OtherDMFailed: "以下のユーザーへのDMに失敗しました。DMが許可されていないかもしれません。\n{0}"
 } as const;
 export type eMessage = (typeof eMessage)[keyof typeof eMessage] | string;
 
