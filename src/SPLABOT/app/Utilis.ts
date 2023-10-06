@@ -1,8 +1,8 @@
-import { eCommands, isCommand } from "./Commands"
+import { eCommands, isMyCommand } from "./Commands"
 import { User as MyUser } from "./db"
 
 
-export class CommandMessageAnalyser {
+export class plainTextCommandAnalyser {
     private _value: string[][];
     constructor(public orgString: string) {
         this._value = orgString.split("\n").map(elm =>
@@ -12,7 +12,7 @@ export class CommandMessageAnalyser {
     }
     get command(): eCommands | null {
         const v = this.getValue(0, 0)?.replace(/^\//, "");
-        return isCommand(v) ? v : null;
+        return isMyCommand(v) ? v : null;
     }
     getValue(rowIdx: number, itemIdx: number): string | null {
         return this._value.at(rowIdx)?.at(itemIdx) ?? null;

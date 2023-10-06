@@ -1,8 +1,8 @@
-import { Client, Channel, User, Message, Embed, ChannelType, Interaction, TextBasedChannel, ApplicationCommandOptionType, EmbedBuilder, Colors, APIEmbed, MessageReplyOptions, BaseMessageOptions, ActionRow, CommandInteraction, Emoji, Encoding, MessageReaction, PartialMessageReaction, Guild, PartialUser, } from 'discord.js';
+import { Client, Channel, User, Message, ChannelType, Interaction, TextBasedChannel, ApplicationCommandOptionType, EmbedBuilder, Colors, BaseMessageOptions, MessageReaction, PartialMessageReaction, Guild, PartialUser, } from 'discord.js';
 import env from "../inc/env.json";
-import { eCommands, isCommand as isMyCommand } from "./Commands"
+import { eCommands, isMyCommand } from "./Commands"
 import { MAX_MEMBER_COUNT, ALPHABET_TABLE } from "./Def"
-import { CommandMessageAnalyser as plainTextMessageAnalyser } from "./Utilis";
+import { plainTextCommandAnalyser } from "./Utilis";
 import { DBAccesser, User as MyUser, PlayUser, PlayUserUtil, PlayUserVersion, ePlayMode } from "./db";
 import { MessageUtil, eMessage } from "./Message";
 import { MatchKeysAndValues } from 'mongodb';
@@ -108,11 +108,6 @@ export class Controller {
         console.log("コマンド受付：" + interaction.commandName);
 
         // コマンド解析
-        let isDM = MyFuncs.isDM(interaction.channel);
-        let sender: MyUser = {
-            id: interaction.user.id,
-            name: interaction.user.displayName,
-        }
         let mentionUsers: MyUser[] = [];
 
         // 先に平文のコマンドでの動作を整備していたためそちらに合わせる。
@@ -151,82 +146,30 @@ export class Controller {
                 }
             }
         }
-        let analyser = new plainTextMessageAnalyser(plainTextCommand);
         console.log("converted to plainTextCommand. \n" + plainTextCommand);
 
         // Discord API の仕様上 3秒以内に何らかのレスポンスを返す必要あり
         // 考え中的なレスポンスを返す
-        await interaction.reply("応答中…");
+        await interaction.reply("*応答中…*");
 
         let result: MyResult;
         try {
-            switch (interaction.commandName) {
-                case eCommands.Member:
-                    result = await this.updateMember(isDM, sender, mentionUsers);
-                    break;
-                case eCommands.SuggestRole:
-                    result = await this.suggestRole(isDM, sender, analyser);
-                    break;
-                case eCommands.SendRole:
-                    result = await this.sendRole(isDM, sender, analyser);
-                    break;
-                case eCommands.CreateVote:
-                    result = await this.createVote(isDM, interaction.user);
-                    break;
-                case eCommands.ClearMemberData:
-                    result = await this.clearUserData(isDM, sender);
-                    break;
-                default:
-                    result = {
-                        status: MySuccess,
-                        sendList: [],
-                    };
-                    break;
-            }
+            result = await this.processPlaneTextCommand(plainTextCommand, interaction.user, interaction.channel!, mentionUsers);
         }
         finally {
             await interaction.editReply("------")
                 .catch(console.error);
         }
 
-        // 順番に送信する前提で格納されている場合もあるので
-        // 送信ごとに待機する
-        let dmFailedUser: MyUser[] = []
-        for (const sendObj of result.sendList) {
-            switch (sendObj.type) {
-                case eSendType.sendReply:
-                    await Sender.asyncSendSameChannel(interaction.channel!, sendObj.sendMessage)
-                        .catch(console.error);
-                    break;
-                case eSendType.sendReplyByDM:
-                    await Sender.asyncDM(interaction.user, sendObj.sendMessage)
-                        .catch(e => Sender.asyncSendSameChannel(interaction.channel!, MessageUtil.getMessage(eMessage.C00_ReplyDMFailed,)))
-                        .catch(console.error);
-                    break;
-                case eSendType.sendDMByUserId:
-                    await Sender.asyncDM_fromUserId(client, sendObj.user.id, sendObj.sendMessage)
-                        .catch(e => dmFailedUser.push(sendObj.user));
-                    break;
-            }
-        }
-        if (dmFailedUser.length > 0) {
-            const unique = dmFailedUser.filter((u, index) => dmFailedUser.findIndex(v => v.id === u.id) === index);
-            const memList = unique.map(u => "* " + u.name).join("\n").replace(/\n$/, "");
-            await Sender.asyncSendSameChannel(interaction.channel!, MessageUtil.getMessage(eMessage.C00_OtherDMFailed, memList))
-                .catch(console.error);
-        }
+        // 結果に基づき処理
+        this.processResultObj(result, client, interaction.user, interaction.channel!);
     }
 
     processMessage = async (client: Client, message: Message) => {
         if (!MyFuncs.isUnresponsiveMessage(client, message.author, message.guild, true))
             return;
 
-        let analyser = new plainTextMessageAnalyser(message.content);
-        let isDM = MyFuncs.isDM(message.channel);
-        let sender: MyUser = {
-            id: message.author.id,
-            name: message.author.displayName,
-        }
+        const plainTextCommand = message.content;
         let mentionUsers: MyUser[] = message.mentions.users.map(itr => {
             return {
                 id: itr.id,
@@ -234,58 +177,11 @@ export class Controller {
             }
         });
 
-        let result: MyResult;
-        switch (analyser.command) {
-            case eCommands.Member:
-                result = await this.updateMember(isDM, sender, mentionUsers);
-                break;
-            case eCommands.SuggestRole:
-                result = await this.suggestRole(isDM, sender, analyser);
-                break;
-            case eCommands.SendRole:
-                result = await this.sendRole(isDM, sender, analyser);
-                break;
-            case eCommands.CreateVote:
-                result = await this.createVote(isDM, message.author);
-                break;
-            case eCommands.ClearMemberData:
-                result = await this.clearUserData(isDM, sender);
-                break;
-            default:
-                result = {
-                    status: MySuccess,
-                    sendList: [],
-                };
-                break;
-        }
-        // 順番に送信する前提で格納されている場合もあるので
-        // 送信ごとに待機する
-        let dmFailedUser: MyUser[] = [];
-        for (const sendObj of result.sendList) {
-            switch (sendObj.type) {
-                case eSendType.sendReply:
-                    await Sender.asyncReply(message, sendObj.sendMessage)
-                        .catch(console.error);
-                    break;
-                case eSendType.sendReplyByDM:
-                    await Sender.asyncDM(message.author, sendObj.sendMessage)
-                        .catch(e => Sender.asyncReply(message, MessageUtil.getMessage(eMessage.C00_ReplyDMFailed,)))
-                        .catch(console.error);
-                    break;
-                case eSendType.sendDMByUserId:
-                    await Sender.asyncDM_fromUserId(client, sendObj.user.id, sendObj.sendMessage)
-                        .catch(e => dmFailedUser.push(sendObj.user));
-                    break;
-                default:
-                    break;
-            }
-        }
-        if (dmFailedUser.length > 0) {
-            const unique = dmFailedUser.filter((u, index) => dmFailedUser.findIndex(v => v.id === u.id) === index);
-            const memList = unique.map(u => "* " + u.name).join("\n").replace(/\n$/, "");
-            await Sender.asyncSendSameChannel(message.channel!, MessageUtil.getMessage(eMessage.C00_OtherDMFailed, memList))
-                .catch(console.error);
-        }
+        // コマンド処理
+        let result = await this.processPlaneTextCommand(plainTextCommand, message.author, message.channel, mentionUsers);
+
+        // 結果に基づき処理
+        this.processResultObj(result, client, message.author, message.channel);
     }
 
     processReaction = async (
@@ -381,6 +277,62 @@ export class Controller {
         //     // 一人複数票あり
         //     // ⇒ 何もしない
         // }
+    }
+
+    processPlaneTextCommand = async (plainTextCommand: string, user: User, channel: TextBasedChannel, users: MyUser[]): Promise<MyResult> => {
+        let analyser = new plainTextCommandAnalyser(plainTextCommand);
+        let isDM = MyFuncs.isDM(channel);
+        let sender: MyUser = {
+            id: user.id,
+            name: user.displayName,
+        }
+
+        switch (analyser.command) {
+            case eCommands.Member:
+                return await this.updateMember(isDM, sender, users);
+            case eCommands.SuggestRole:
+                return await this.suggestRole(isDM, sender, analyser);
+            case eCommands.SendRole:
+                return await this.sendRole(isDM, sender, analyser);
+            case eCommands.CreateVote:
+                return await this.createVote(isDM, user);
+            case eCommands.ClearMemberData:
+                return await this.clearUserData(isDM, sender);
+            default:
+                return {
+                    status: MySuccess,
+                    sendList: [],
+                };
+        }
+    }
+
+    processResultObj = async (result: MyResult, client: Client, user: User, channel: TextBasedChannel) => {
+        // 順番に送信する前提で格納されている場合もあるので
+        // 送信ごとに待機する
+        let dmFailedUser: MyUser[] = []
+        for (const sendObj of result.sendList) {
+            switch (sendObj.type) {
+                case eSendType.sendReply:
+                    await Sender.asyncSendSameChannel(channel, sendObj.sendMessage)
+                        .catch(console.error);
+                    break;
+                case eSendType.sendReplyByDM:
+                    await Sender.asyncDM(user, sendObj.sendMessage)
+                        .catch(e => Sender.asyncSendSameChannel(channel, MessageUtil.getMessage(eMessage.C00_ReplyDMFailed,)))
+                        .catch(console.error);
+                    break;
+                case eSendType.sendDMByUserId:
+                    await Sender.asyncDM_fromUserId(client, sendObj.user.id, sendObj.sendMessage)
+                        .catch(e => dmFailedUser.push(sendObj.user));
+                    break;
+            }
+        }
+        if (dmFailedUser.length > 0) {
+            const unique = dmFailedUser.filter((u, index) => dmFailedUser.findIndex(v => v.id === u.id) === index);
+            const memList = unique.map(u => "* " + u.name).join("\n").replace(/\n$/, "");
+            await Sender.asyncSendSameChannel(channel, MessageUtil.getMessage(eMessage.C00_OtherDMFailed, memList))
+                .catch(console.error);
+        }
     }
 
     insertUserData = async (isDM: boolean, user: MyUser): Promise<MyResult> => {
@@ -530,7 +482,7 @@ export class Controller {
         return result;
     }
 
-    suggestRole = async (isDM: boolean, user: MyUser, orgCmd: plainTextMessageAnalyser): Promise<MyResult> => {
+    suggestRole = async (isDM: boolean, user: MyUser, orgCmd: plainTextCommandAnalyser): Promise<MyResult> => {
         if (isDM) {
             // DMからでもOK
             console.log("dmで受信");
@@ -556,7 +508,7 @@ export class Controller {
         if (cmd.getValue(0, 1) == null) {
             // 引数が１個も無い場合は前回のデータを採用
             uesPredata = true;
-            cmd = new plainTextMessageAnalyser(data?.play_data.prevSuggestRoleCommandString ?? "");
+            cmd = new plainTextCommandAnalyser(data?.play_data.prevSuggestRoleCommandString ?? "");
             if (cmd.isEmpty()) {
                 return MyFuncs.createErrorReply(eMessage.C03_NonAgainData,);
             }
@@ -670,7 +622,7 @@ export class Controller {
         return result;
     }
 
-    sendRole = async (isDM: boolean, user: MyUser, orgCmd: plainTextMessageAnalyser): Promise<MyResult> => {
+    sendRole = async (isDM: boolean, user: MyUser, orgCmd: plainTextCommandAnalyser): Promise<MyResult> => {
         // スラッシュコマンドなら他ユーザーに見えないようにできるのか？
         // ⇒ DM送信の方がその後の手順としても良いか。
         if (!isDM) {
@@ -792,7 +744,7 @@ export class Controller {
         }
 
         // 前回のメンバー通知コマンドをパース
-        const memberRoleDef = new plainTextMessageAnalyser(data.play_data.prevSendRoleCommandString)
+        const memberRoleDef = new plainTextCommandAnalyser(data.play_data.prevSendRoleCommandString)
             .parseMemberRoleDef(data.play_data.member_list);
 
         let msg = "";

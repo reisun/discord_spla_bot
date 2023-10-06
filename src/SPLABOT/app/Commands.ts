@@ -17,11 +17,7 @@ declare module 'discord.js' {
     interface SlashCommandBuilder {
         // 「数珠つなぎ に .set～()できるよっていうのなら、同項目１、同項目２…も 便利に数珠つなぎで
         // 定義できるようにさせろよ」と怒り狂って用意した拡張メソッド。
-        /**
-         * 指定した配列の要素だけ処理を繰り返します。
-         * @param array 
-         * @param func 
-         */
+        /** 指定した配列の要素だけ処理を繰り返します。 */
         forEach<T>(
             array: Array<T>,
             func: (builder: SlashCommandBuilder, item: T) => void
@@ -29,11 +25,7 @@ declare module 'discord.js' {
     }
     // 「同じ分類の型どれだよめんどくさい」と怒り狂って用意した 上記と同様の range 拡張メソッド
     interface SlashCommandSubcommandBuilder {
-        /**
-         * 指定した配列の要素だけ処理を繰り返します。
-         * @param array 
-         * @param func 
-         */
+        /** 指定した配列の要素だけ処理を繰り返します。 */
         forEach<T>(
             array: Array<T>,
             func: (builder: SlashCommandSubcommandBuilder, item: T) => void
@@ -88,7 +80,7 @@ export const eCommands = {
 
 export type eCommands = (typeof eCommands)[keyof typeof eCommands];
 
-export const isCommand = (v: any): v is eCommands => Object.values(eCommands).some(elm => elm === v);
+export const isMyCommand = (v: any): v is eCommands => Object.values(eCommands).some(elm => elm === v);
 
 // スラッシュコマンドの型がガチガチ過ぎて、こちらの定義⇒discord.jsの定義への変換が
 // めんどくさくてあほらしい…
