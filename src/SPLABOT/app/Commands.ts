@@ -133,28 +133,31 @@ export const COMMAND_JSONBODYS: RESTPostAPIChatInputApplicationCommandsJSONBody[
             ) 
         )
     .toJSON(),
-    new SlashCommandBuilder()
-        .setName(eCommands.SendRole)
-        .setDescription("メンバーに名前・役職をDM送信します。\n自動で作成した文字列パラメータを使う前提のコマンドです。")
-        .addStringOption(opt => opt
-            .setName("member_roles")
-            .setDescription("メンバーに割り振る役職を示した文字列")
-            .setRequired(true)
-        )
-        .addStringOption(opt => opt
-            .setName("options")
-            .setDescription("狂人に人狼が誰か伝えるなどのオプション動作を示す文字列")
-            .setRequired(false)
-        )
-        .toJSON(),
+    // DMからの送信が前提なので スラッシュコマンドは非公開とする
+    // new SlashCommandBuilder()
+    //     .setName(eCommands.SendRole)
+    //     .setDescription("メンバーに名前・役職をDM送信します。\n自動で作成した文字列パラメータを使う前提のコマンドです。")
+    //     .addStringOption(opt => opt
+    //         .setName("member_roles")
+    //         .setDescription("メンバーに割り振る役職を示した文字列")
+    //         .setRequired(true)
+    //     )
+    //     .addStringOption(opt => opt
+    //         .setName("options")
+    //         .setDescription("狂人に人狼が誰か伝えるなどのオプション動作を示す文字列")
+    //         .setRequired(false)
+    //     )
+    //     .toJSON(),
     new SlashCommandBuilder()
         .setName(eCommands.CreateVote)
         .setDescription("前回メンバーに知らせた役職を元に、投票フォームを作成します。")
         .toJSON(),
-    new SlashCommandBuilder()
-        .setName(eCommands.ClearMemberData)
-        .setDescription("ユーザーごとに保存されている情報をクリアします。（メンバーをクリアしたい時や、不具合時に利用する想定）")
-        .toJSON(),
+    // スラッシュコマンドでは非公開にする。簡単に実行できてしまうので
+    // TODO メッセージに対する数秒間待ち受けを作って、本当に消して良いか回答させるような処理ができないか
+    // new SlashCommandBuilder()
+    //     .setName(eCommands.ClearMemberData)
+    //     .setDescription("ユーザーごとに保存されている情報をクリアします。（メンバーをクリアしたい時や、不具合時に利用する想定）")
+    //     .toJSON(),
 ];
 
 export const MAX_MEMBER_COUNT: number = 14;

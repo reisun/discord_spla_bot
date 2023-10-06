@@ -29,6 +29,11 @@ const rest = new REST({
 const controller = new Controller();
 
 const asyncAddCommand = async (servId: string) => {
+    const guild = client.guilds.cache.get(servId);
+    if (!guild){
+        // 参加していないサーバー
+        return;
+    }
     await rest.put(
         Routes.applicationGuildCommands(client.application!.id, servId),
         { body: COMMAND_JSONBODYS },
@@ -36,7 +41,11 @@ const asyncAddCommand = async (servId: string) => {
 }
 const asyncRemoveCommand = async (servId: string) => {
     const guild = client.guilds.cache.get(servId);
-    let commandList = await guild?.commands.fetch();
+    if (!guild){
+        // 参加していないサーバー
+        return;
+    }
+    let commandList = await guild.commands.fetch();
     if (commandList) {
         for (const cmd of commandList.values()) {
             if (cmd.applicationId == client.application!.id) {
@@ -62,7 +71,7 @@ client.once('ready', async () => {
     try {
         // 認可サーバーごとにループ
         for (const servId of env.allowed_serv) {
-            asyncUpdateCommand(servId);
+            await asyncUpdateCommand(servId);
         }
         console.log('slash command refresh success!');
     } catch (error) {
@@ -78,6 +87,7 @@ client.on(Events.GuildCreate, guild => {
 });
 
 client.on(Events.GuildDelete, guild => {
+    // これって効くのか？
     asyncRemoveCommand(guild.id);
 });
 

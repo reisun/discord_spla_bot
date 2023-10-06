@@ -105,8 +105,6 @@ export class Controller {
         if (!isMyCommand(interaction.commandName))
             return;
 
-        console.log("コマンド受付：" + interaction.commandName);
-
         // コマンド解析
         let mentionUsers: MyUser[] = [];
 
@@ -166,7 +164,7 @@ export class Controller {
     }
 
     processMessage = async (client: Client, message: Message) => {
-        if (!MyFuncs.isUnresponsiveMessage(client, message.author, message.guild, true))
+        if (!MyFuncs.isUnresponsiveMessage(client, message.author, message.guild, false))
             return;
 
         const plainTextCommand = message.content;
@@ -194,7 +192,7 @@ export class Controller {
         return;
 
         // // 自分の反応やBOTの反応は無視する
-        // if (!MyFuncs.isUnresponsiveMessage(client, user, reaction.message.guild, true))
+        // if (!MyFuncs.isUnresponsiveMessage(client, user, reaction.message.guild, false))
         //     return;
 
         // // BOT自身のメッセージに対する反応で無ければ無視する
@@ -361,7 +359,7 @@ export class Controller {
     }
 
     updateMember = async (isDM: boolean, user: MyUser, inputMenbers: MyUser[]): Promise<MyResult> => {
-        if (isDM) {
+        if (isDM && inputMenbers.length > 0) {
             // ではだめにする。理由としてメンバーのメンションが必要なので
             return MyFuncs.createErrorReply(eMessage.C02_NotAllowFromDM);
         }
@@ -742,11 +740,18 @@ export class Controller {
         if (!data) {
             return getRet!;
         }
+        if (!data.play_data.prevSendRoleCommandString){
+            return MyFuncs.createErrorReply(eMessage.C05_RoleDataNothing);
+        }
 
         // 前回のメンバー通知コマンドをパース
         const memberRoleDef = new plainTextCommandAnalyser(data.play_data.prevSendRoleCommandString)
             .parseMemberRoleDef(data.play_data.member_list);
 
+        if (memberRoleDef.length == 0){
+            return MyFuncs.createErrorReply(eMessage.C05_RoleDataNothingInData);
+        }
+    
         let msg = "";
         memberRoleDef.forEach(memRole => {
             const emoji = MyFuncs.createDiscordAlphabetEmoji(memRole.alphabet);

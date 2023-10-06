@@ -15,7 +15,7 @@ export const eMessage = {
     C01_AlreadyIns: "既に操作者としてデータが登録されています。",
     C01_DBError: "予期せぬエラーで操作者として登録できませんでした。ごめんね…",
     // updateMember
-    C02_NotAllowFromDM: "チャンネルからコマンドを実行してください。",
+    C02_NotAllowFromDM: "メンバー編集はチャンネルから実行してください。（サーバー外のユーザーを登録してBOTがDMとか気まずそうなので…）",
     C02_MemberView_Zero: "現在メンバーはいません。",
     C02_MemberView: "現在の登録されているメンバーは以下の通りです。\n{0}",
     C02_inner_MemberFormat: "* {0}", // markdown のリスト表記を使う
@@ -38,14 +38,15 @@ export const eMessage = {
     C04_MemberNothing: "メンバーを決定してね😨",
     C04_MemberArgNothing: "コマンドにメンバー設定がありません。",
     C04_MemberArgNonMatch: "メンバーが更新されている？ 不整合がありました。\n{0} からやり直してみてください。",
-    C04_SendRoleTmpl: "…\n次の人狼が始まります。\n\nあなたの名前と役職は\n名前：**{0}**\n役職：**{1}**\nです。",
-    C04_SendKnowTmpl: "…\n**{0}** のあなたにお知らせがあります。\n**{1}** は **{2}** です。",
+    C04_SendRoleTmpl: "…\n次の人狼が始まります。\n\nあなたの名前と役職は\n名前：**{0}**\n役職：**{1}**\nです。\n…",
+    C04_SendKnowTmpl: "…\n**{0}** のあなたにお知らせがあります。\n**{1}** は **{2}** です。\n…",
     C04_DMSuccess: "メンバーにDMしました。",
     C04_DBError: "予期せぬエラーで送信できませんでした。力不足で申し訳…", 
     // Vote
     C05_NotAllowFromDM: "チャンネルからコマンドを実行してください。",
     C05_MemberNothing: "メンバーを決定してね😨",
-    C05_MemberUpdated: "メンバーが更新されている？ {0} からやり直してね",
+    C05_RoleDataNothing: "メンバーにDM送信した情報がありません。ロール作成からやり直して見てください。",
+    C05_RoleDataNothingInData: "メンバーにDM送信時にメンバーが０人だったようです。（そんなことある？）ロール作成からやり直して見てください。",
     // clear memberData
     C06_ClearMemberData: "登録されたメンバーデータがクリアされました。",
     C06_DataNothing: "既にメンバーデータはクリアされています。",
