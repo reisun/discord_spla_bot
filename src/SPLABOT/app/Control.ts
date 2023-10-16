@@ -184,97 +184,62 @@ export class Controller {
 
     processReaction = async (
         client: Client,
-        reaction: MessageReaction | PartialMessageReaction,
+        lastReaction: MessageReaction | PartialMessageReaction,
         user: User | PartialUser
     ): Promise<void> => {
 
-        // １票のみの制御を作ってみたが重たかったので一旦やめる
-        return;
+        // 自分の反応やBOTの反応は無視する
+        if (!MyFuncs.isUnresponsiveMessage(client, user, lastReaction.message.guild, false))
+            return;
 
-        // // 自分の反応やBOTの反応は無視する
-        // if (!MyFuncs.isUnresponsiveMessage(client, user, reaction.message.guild, false))
-        //     return;
+        // BOT自身のメッセージに対する反応で無ければ無視する
+        if (lastReaction.message.author == null
+            || client.user == null
+            || lastReaction.message.author.id != client.user.id) {
+            return;
+        }
 
-        // // BOT自身のメッセージに対する反応で無ければ無視する
-        // if (reaction.message.author == null
-        //     || client.user == null
-        //     || reaction.message.author.id != client.user.id) {
-        //     return;
-        // }
+        // BOT自身のメッセージに埋め込みメッセージが無ければ少なくとも投票ではないので無視する
+        if (!lastReaction.message.embeds || lastReaction.message.embeds.length != 1)
+            return;
 
-        // // BOT自身のメッセージに埋め込みメッセージが無ければ少なくとも投票ではないので無視する
-        // if (!reaction.message.embeds || reaction.message.embeds.length != 1)
-        //     return;
+        // 埋め込みメッセージのフッタに投票を示す文字列が入っていれば処理する
+        const embed = lastReaction.message.embeds[0];
+        const voteMsg = [eMessage.C00_VoteOneOnOne, eMessage.C00_VoteAny]
+        if (embed.footer == null
+            || !voteMsg.some(v => embed.footer!.text.includes(v))
+        ) {
+            return;
+        }
 
-        // // 埋め込みメッセージのフッタに投票を示す文字列が入っていれば処理する
-        // const embed = reaction.message.embeds[0];
-        // const voteMsg = [eMessage.C00_VoteOneOnOne, eMessage.C00_VoteAny]
-        // if (embed.footer == null
-        //     || !voteMsg.some(v => embed.footer!.text.includes(v))
-        // ) {
-        //     return;
-        // }
+        const getMyCheckReactionsOnCache = async () => {
+            const allReactions = lastReaction.message.reactions.cache.map(r => r);
+            const myCheckReactions: MessageReaction[] = [];
+            for (const r of allReactions) {
+                const us = r.users.cache;
+                if (us.find(u => u.id == user.id))
+                    myCheckReactions.push(r);
+            };
+            return myCheckReactions;
+        }
 
-        // const myid = user.id;
-
-        // const getCacheMyCheckReactions = async () => {
-        //     const allReactions = reaction.message.reactions.cache.map(r => r);
-        //     const myCheckReactions: MessageReaction[] = [];
-        //     for (const r of allReactions) {
-        //         const us = r.users.cache;
-        //         if (us.find(u => u.id == myid))
-        //             myCheckReactions.push(r);
-        //     };
-        //     return myCheckReactions;
-        // }
-
-        // const getNowMyCheckReactions = async () => {
-        //     const allReactions = (await reaction.message.fetch()).reactions.cache.map(r => r);
-        //     const myCheckReactions: MessageReaction[] = [];
-        //     for (const r of allReactions) {
-        //         const us = (await r.users.fetch());
-        //         if (us.find(u => u.id == myid))
-        //             myCheckReactions.push(r);
-        //     };
-        //     return myCheckReactions;
-        // }
-
-        // if (embed.footer.text == eMessage.C00_VoteOneOnOne) {
-        //     // 一人一票
-        //     // ⇒ 直近のリアクション以外は削除
-
-        //     const cacheMyCheckReactions = await getCacheMyCheckReactions();
-        //     if (cacheMyCheckReactions.length <= 1) {
-        //         return;
-        //     }
-
-        //     const removeReaction: MessageReaction[] = [];
-        //     for (const r of cacheMyCheckReactions) {
-        //         if (reaction.emoji.identifier != r.emoji.identifier) {
-        //             removeReaction.push(r);
-        //         }
-        //     }
-
-        //     // 排他処理（当時とは違うものにチェックが入っているなら次のイベントに任せる）
-        //     const nows = await getNowMyCheckReactions();
-        //     for (const now of nows) {
-        //         if (cacheMyCheckReactions.find(cache =>
-        //             cache.emoji.identifier == now.emoji.identifier)) {
-        //         // キャッシュと同じリアクション
-        //         continue;
-        //         }
-        //         // キャッシュにないリアクション
-        //         return;
-        //     }
-
-        //     for (const r of removeReaction) {
-        //         await r.users.remove(await user.fetch());
-        //     }
-        // }
-        // else {
-        //     // 一人複数票あり
-        //     // ⇒ 何もしない
-        // }
+        if (embed.footer.text == eMessage.C00_VoteOneOnOne) {
+            // 一人一票
+            // ⇒ 直近のリアクション以外は削除
+            const myCheckReactionsOnCache = await getMyCheckReactionsOnCache();
+            if (myCheckReactionsOnCache.length <= 1) {
+                return;
+            }
+            for (const r of myCheckReactionsOnCache) {
+                if (lastReaction.emoji.identifier != r.emoji.identifier) {
+                    await r.users.remove(await user.fetch());
+                }
+            }
+        }
+        else {
+            // 一人複数票あり
+            // ⇒ 何もしない
+        }
     }
 
     processPlaneTextCommand = async (plainTextCommand: string, user: User, channel: TextBasedChannel, users: MyUser[]): Promise<MyResult> => {
