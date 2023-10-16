@@ -7,6 +7,12 @@ import { DBAccesser, User as MyUser, PlayUser, PlayUserUtil, PlayUserVersion, eP
 import { MessageUtil, eMessage } from "./Message";
 import { MatchKeysAndValues } from 'mongodb';
 
+// TODO メンバー情報はサーバー単位で保存が必要
+// TODO 操作者の確認、作業を飛ばすコマンドが欲しい
+//       ⇒ むしろこちらをデフォルトにしたい
+// TODO 操作者のメンバー情報を各メンバーに共有できないか
+//      ⇒ 操作ごとにメンバーに同じ内容をコピーするというとても荒々しい処理になりそう笑
+
 // TODO 投票で 中のメッセージを修正したりすると面白いか？
 // TODO メッセージは組み込みにしたい。本文説明（or 導入メッセージ）<改行> 組み込みメッセージ みたいなフォーマットで。
 // TODO 組み込みメッセージで複数をなるべく一つにしたいし、エラーメッセージには色を付けたりした。
@@ -17,8 +23,9 @@ import { MatchKeysAndValues } from 'mongodb';
 // TODO ゲーム名とチャット名を同時に出す仕様は面倒なので、どちらかが出る仕様としたい。
 //      ⇒ 共通名前付き にするなら、ちゃんと共通名前でやり取りして、
 //          必要なら議論タイムで名乗るってのがゲームだと思うし。
-//      まずデータの移送を先に済ませてから移送先の変数でチェックしてみよう
 // TODO controler　は inner と外用で分けたい。例外処理も controlerがわで
+// TODO 操作者だけのメッセージは他ユーザーに見えないようにしたい
+// TODO 追放者の登録をしたい
 
 const eSendType = {
     sendReply: 1,
@@ -102,10 +109,15 @@ export class Controller {
         if (!interaction.isCommand())
             return;
 
+        // 自分の反応やBOTの反応は無視する
+        if (!MyFuncs.isUnresponsiveMessage(client, interaction.user, interaction.guild, false))
+            return;
+
         if (!isMyCommand(interaction.commandName))
             return;
 
-        // コマンド解析
+        // --- コマンド解析
+
         let mentionUsers: MyUser[] = [];
 
         // 先に平文のコマンドでの動作を整備していたためそちらに合わせる。
@@ -130,7 +142,7 @@ export class Controller {
             if (opt.type == ApplicationCommandOptionType.Subcommand && opt.name == "again") {
                 // 引数無し
             }
-            if (opt.type == ApplicationCommandOptionType.Subcommand && opt.name == "create") {
+            if (opt.type == ApplicationCommandOptionType.Subcommand && opt.name == "send") {
                 if (!opt.options) {
                     continue;
                 }
@@ -164,6 +176,7 @@ export class Controller {
     }
 
     processMessage = async (client: Client, message: Message) => {
+        // 自分の反応やBOTの反応は無視する
         if (!MyFuncs.isUnresponsiveMessage(client, message.author, message.guild, false))
             return;
 
@@ -325,7 +338,7 @@ export class Controller {
 
     updateMember = async (isDM: boolean, user: MyUser, inputMenbers: MyUser[]): Promise<MyResult> => {
         if (isDM && inputMenbers.length > 0) {
-            // ではだめにする。理由としてメンバーのメンションが必要なので
+            // ではだめにする。メンバーのメンションが必要なので
             return MyFuncs.createErrorReply(eMessage.C02_NotAllowFromDM);
         }
 
@@ -349,25 +362,6 @@ export class Controller {
                 throw new Error("論理エラー");
             }
         }
-
-        //         // 現状はデフォルトでメンバーのみ削除
-        // // メンバーデータを削除
-        // const updRet = (await this.connectedDB.PlayUser.updateOne(
-        //     query,
-        //     {
-        //         $set: {
-        //             'play_data.member_list': [],
-        //         },
-        //         $currentDate: {
-        //             player_last_ope_datatime: true,
-        //         },
-        //     },
-        // ));
-
-        // if (!updRet.acknowledged || updRet.modifiedCount == 0) {
-        //     return MyFuncs.createErrorReply(eMessage.C06_DBError,);
-        // }
-
 
         if (inputMenbers.length == 0) {
             // メンションが０人なら参照モード
@@ -455,7 +449,7 @@ export class Controller {
         let { data, getRet } = await MyFuncs.asyncGetPlayUesr(this.connectedDB, user,
             eMessage.C03_MemberNothing,)
         if (!data) {
-            // GMで無ければメンバー追加へ誘導（メンバー追加コマンドでGMになれるので、ここではGMにさせてあげないんだから///）
+            // GMで無ければメンバー追加へ誘導（メンバー追加コマンドでGMになれるので、ここではGMにさせてあげない）
             return getRet!;
         }
 
@@ -464,6 +458,10 @@ export class Controller {
             status: MySuccess,
             sendList: [],
         }
+
+        // --checkオプションがあるかどうか控えておく
+        // TODO --check は定数にしたい
+        let checkOptExists = orgCmd.getOptions().some(opt => opt == "--check");
 
         // コマンドチェック
         let cmd = orgCmd;
@@ -477,7 +475,7 @@ export class Controller {
             }
         }
         // コマンドチェックつづき
-        // テンプレートを利用したからと言ってエラーにならないわけでは無い
+        // 前回データの利用だからといってエラーにならないわけでは無い
         if (cmd.getValue(0, 2) == null) {
             result.status = MyError;
             result.sendList.push(MyFuncs.createReply(eMessage.C03_RorlArgNothing, eCommands.SuggestRole))
@@ -518,9 +516,9 @@ export class Controller {
             return result;
         }
 
-        // ---ロール割り振り提案
+        // ---ロール割り振り作成
 
-        // 全員村人にして、役職ごとにランダムで決定
+        // 村人を初期値にして、役職ごとにランダムでメンバーに割り振り
         let workMemberList: { member: MyUser, dispName: string, role: string }[]
             = data.play_data.member_list.map(mem => { return { member: mem, dispName: "", role: "村人" }; });
         roleNameList.forEach(role => {
@@ -531,7 +529,7 @@ export class Controller {
             workMemberList[hitIdx].role = role;
         });
 
-        // アルファベットテーブルをランダムに回してメンバーの数で抽出
+        // アルファベットテーブルをランダムに回してメンバーに割り振り
         let alpList = ALPHABET_TABLE.concat();
         for (let i = 0; MyFuncs.getRandomInt(alpList.length); i++) {
             alpList.push(alpList.shift()!);
@@ -547,12 +545,10 @@ export class Controller {
             workMemberList[hitIdx].dispName = theName + alp;
         });
 
-        // 文字列化
+        // --- 文字列化
         let memberRoleStr = "";
-        let option = MessageUtil.getMessage(
-            eMessage.C03_inner_1_know_to_0, "人狼", "狂人");
 
-        // 文字幅調整
+        // 見易くなるよう文字幅調整用の数を求める
         let roleMaxlen = Math.max(...roleNameList.map(v => v.length));
 
         memberRoleStr = workMemberList.map(obj =>
@@ -562,15 +558,46 @@ export class Controller {
                 obj.member.name),
         ).join("\n");
 
-        result.sendList.push(
-            MyFuncs.createReplyDM(eMessage.C03_SuggestMemberExplain),
-            MyFuncs.createReplyDM(
-                eMessage.C03_SuggestMember,
-                eCommands.SendRole,
-                memberRoleStr,
-                option),
-            MyFuncs.createReply(eMessage.C00_ReplyDM),
-        );
+        // とりあえず 知らせるオプションの規定値を設定しておく
+        let option = MessageUtil.getMessage(
+            eMessage.C03_inner_1_know_to_0, "人狼", "狂人");
+
+        // sendRole用の平文のコマンドを作成
+        const planeTextForSnedRole = MessageUtil.getMessage(
+            eMessage.C03_SuggestMember,
+            eCommands.SendRole,
+            memberRoleStr,
+            option);
+        
+        // --checkオプションが無ければ、確認なしで各メンバーにDMする
+        if (!checkOptExists) {
+            // sendRoleに渡す
+            const sendRoleRet = await this.sendRole(
+                true,/*trueにしてDMから送っていることにする*/ 
+                user,
+                new plainTextCommandAnalyser(planeTextForSnedRole));
+            if (sendRoleRet.status == 'error') {
+                return sendRoleRet;
+            }
+            // 成功時のレスポンスを追加
+            sendRoleRet.sendList.forEach(snedParam => {
+                result.sendList.push(snedParam);
+            });
+        }
+        else {
+            // --checkオプションがある場合
+            // メッセージに sendRole用コマンドを含める
+            result.sendList.push(
+                MyFuncs.createReplyDM(eMessage.C03_SuggestMemberExplain),
+                MyFuncs.createReplyDM(planeTextForSnedRole),
+            );
+
+            if (!isDM) {
+                result.sendList.push(
+                    MyFuncs.createReply(eMessage.C00_ReplyDM),
+                );
+            }
+        }
 
         if (!uesPredata) {
             // 今回のパラメータを記憶
@@ -586,8 +613,6 @@ export class Controller {
     }
 
     sendRole = async (isDM: boolean, user: MyUser, orgCmd: plainTextCommandAnalyser): Promise<MyResult> => {
-        // スラッシュコマンドなら他ユーザーに見えないようにできるのか？
-        // ⇒ DM送信の方がその後の手順としても良いか。
         if (!isDM) {
             // DMで送らないと視えちゃうのでだめ
             return MyFuncs.createErrorReply(eMessage.C04_NeedDM);
@@ -705,7 +730,7 @@ export class Controller {
         if (!data) {
             return getRet!;
         }
-        if (!data.play_data.prevSendRoleCommandString){
+        if (!data.play_data.prevSendRoleCommandString) {
             return MyFuncs.createErrorReply(eMessage.C05_RoleDataNothing);
         }
 
@@ -713,10 +738,10 @@ export class Controller {
         const memberRoleDef = new plainTextCommandAnalyser(data.play_data.prevSendRoleCommandString)
             .parseMemberRoleDef(data.play_data.member_list);
 
-        if (memberRoleDef.length == 0){
+        if (memberRoleDef.length == 0) {
             return MyFuncs.createErrorReply(eMessage.C05_RoleDataNothingInData);
         }
-    
+
         let msg = "";
         memberRoleDef.forEach(memRole => {
             const emoji = MyFuncs.createDiscordAlphabetEmoji(memRole.alphabet);
@@ -765,7 +790,6 @@ export class Controller {
             return MyFuncs.createErrorReply(eMessage.C06_DataNothing,);
         }
 
-        // TODO clear data は メンバーをクリアだけじゃなく全部クリアする旨をREADMEなどで更新
         const query = { player_id: user.id };
         const delRet = await this.connectedDB.PlayUser.deleteMany(query);
 

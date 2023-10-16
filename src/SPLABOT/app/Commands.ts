@@ -117,8 +117,8 @@ export const COMMAND_JSONBODYS: RESTPostAPIChatInputApplicationCommandsJSONBody[
             .setDescription("前回と同じ条件で割り振りを作成できます。\n（このコマンドめんどくさいもんね）")
         )
         .addSubcommand(subcmd => subcmd
-            .setName("create")
-            .setDescription("割り振りを作成します。")
+            .setName("send")
+            .setDescription("登録したメンバーに自動で名前・役職を決めてDMします。")
             .addStringOption(opt => opt
                 .setName("name")
                 .setDescription("人狼の際のみんなに付ける共通の名前（個々の判別にはA,B,Cなどを末尾に付けます）を設定できます。\n使用しない場合は`?`（はてな）を入力してください。")

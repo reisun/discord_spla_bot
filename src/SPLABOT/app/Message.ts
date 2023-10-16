@@ -31,7 +31,7 @@ export const eMessage = {
     C03_MemberFew: "村人以外の役職({0}個)に対してメンバーが足りません。({1}人)",
     C03_SuggestMemberExplain: "ロール割り当てコマンドを作りました。\n以下のメッセージをコピーしてBOTに送信してください。\n（必要なら修正して送信でＯＫ）",
     C03_SuggestMember: "/{0}\n{1}\n{2}", // コマンド、メンバ役割表、オプション
-    C03_inner_MemberFormat: "{0}\t{1}\t{2}", // ゲーム内名前、役職、メンバー名
+    C03_inner_MemberFormat: "{0}　{1}　{2}", // ゲーム内名前、役職、メンバー名
     C03_inner_1_know_to_0: "{0}>知られる>{1}",
     // roleSend
     C04_NeedDM: "DMで送らないと視えちゃうのでだめや",
