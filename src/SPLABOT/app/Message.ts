@@ -51,6 +51,9 @@ export const eMessage = {
     C06_ClearMemberData: "登録されたメンバーデータがクリアされました。",
     C06_DataNothing: "既にメンバーデータはクリアされています。",
     C06_DBError: "予期せぬエラーでメンバーデータがクリアできませんでした。悔しい…", 
+    // teambuilder
+    C07_DataNothing: "メンバーを決定してね😨",
+    C07_NonVoiceCh: "ボイスチャンネルから実行してね。",
 } as const;
 export type eMessage = (typeof eMessage)[keyof typeof eMessage] | string;
 

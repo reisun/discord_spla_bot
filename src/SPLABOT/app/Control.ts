@@ -1,17 +1,27 @@
-import { Client, Channel, User, Message, ChannelType, Interaction, TextBasedChannel, ApplicationCommandOptionType, EmbedBuilder, Colors, BaseMessageOptions, MessageReaction, PartialMessageReaction, Guild, PartialUser, } from 'discord.js';
+import { Client, Channel, User, Message, ChannelType, Interaction, TextBasedChannel, ApplicationCommandOptionType, EmbedBuilder, Colors, BaseMessageOptions, MessageReaction, PartialMessageReaction, Guild, PartialUser, APIEmbed, } from 'discord.js';
 import env from "../inc/env.json";
-import { eCommands, isMyCommand } from "./Commands"
+import { eCommandOptions, eCommands, isMyCommand } from "./Commands"
 import { MAX_MEMBER_COUNT, ALPHABET_TABLE } from "./Def"
 import { plainTextCommandAnalyser } from "./Utilis";
 import { DBAccesser, User as MyUser, PlayUser, PlayUserUtil, PlayUserVersion, ePlayMode } from "./db";
 import { MessageUtil, eMessage } from "./Message";
 import { MatchKeysAndValues } from 'mongodb';
 
-// TODO メンバー情報はサーバー単位で保存が必要
-// TODO 操作者の確認、作業を飛ばすコマンドが欲しい
-//       ⇒ むしろこちらをデフォルトにしたい
-// TODO 操作者のメンバー情報を各メンバーに共有できないか
+// 操作者の確認、作業を飛ばすコマンドが欲しい？
+//       ⇒ むしろこちらをデフォルトにしたい…が、つまりそれはGMをBOTがやるということであり
+//       ゲーム進行を全て管理する必要がでてくるので、状態を知らせるコマンドが多数必要
+//       また、ゲームのアレンジにも弱い、人間がやる方がおもろいはず
+
+// 操作者のメンバー情報を各メンバーに共有できないか
 //      ⇒ 操作ごとにメンバーに同じ内容をコピーするというとても荒々しい処理になりそう笑
+//      ボイチャにデータを持たせればイイじゃない…
+
+// TODO メンバー登録する際に、同じボイチャにいるメンバーは自動的に登録できるようにしたい
+//      ⇒ 初めからこれで良かった説
+//      ⇒ てか、操作者別のデータも、これで、チャンネルごとのデータ保存で済むのでは？
+//      ⇒ これだったっぽい
+
+// TODO 改修したREADMEに合わせて改修
 
 // TODO 投票で 中のメッセージを修正したりすると面白いか？
 // TODO メッセージは組み込みにしたい。本文説明（or 導入メッセージ）<改行> 組み込みメッセージ みたいなフォーマットで。
@@ -116,6 +126,11 @@ export class Controller {
         if (!isMyCommand(interaction.commandName))
             return;
 
+        // Discord API の仕様上 3秒以内に何らかのレスポンスを返す必要あり
+        // 考え中的なレスポンスを返す
+        await interaction.reply("*応答中…*")
+            .catch(console.error);
+
         // --- コマンド解析
 
         let mentionUsers: MyUser[] = [];
@@ -142,7 +157,7 @@ export class Controller {
             if (opt.type == ApplicationCommandOptionType.Subcommand && opt.name == "again") {
                 // 引数無し
             }
-            if (opt.type == ApplicationCommandOptionType.Subcommand && opt.name == "send") {
+            if (opt.type == ApplicationCommandOptionType.Subcommand && opt.name == "create") {
                 if (!opt.options) {
                     continue;
                 }
@@ -155,12 +170,22 @@ export class Controller {
                     }
                 }
             }
+            if (opt.type == ApplicationCommandOptionType.Subcommand && opt.name == "create_no_check") {
+                if (!opt.options) {
+                    continue;
+                }
+                plainTextCommand += " " + eCommandOptions.nocheck;
+                for (const subopt of opt.options) {
+                    if (subopt.type == ApplicationCommandOptionType.String && subopt.name == "name") {
+                        plainTextCommand += " " + subopt.value;
+                    }
+                    if (subopt.type == ApplicationCommandOptionType.String && subopt.name.match(/^role/)) {
+                        plainTextCommand += " " + subopt.value;
+                    }
+                }
+            }
         }
         console.log("converted to plainTextCommand. \n" + plainTextCommand);
-
-        // Discord API の仕様上 3秒以内に何らかのレスポンスを返す必要あり
-        // 考え中的なレスポンスを返す
-        await interaction.reply("*応答中…*");
 
         let result: MyResult;
         try {
@@ -274,6 +299,8 @@ export class Controller {
                 return await this.createVote(isDM, user);
             case eCommands.ClearMemberData:
                 return await this.clearUserData(isDM, sender);
+            case eCommands.TeamBuilder:
+                return await this.buildTeam(isDM, sender, channel);
             default:
                 return {
                     status: MySuccess,
@@ -459,9 +486,9 @@ export class Controller {
             sendList: [],
         }
 
-        // --checkオプションがあるかどうか控えておく
-        // TODO --check は定数にしたい
-        let checkOptExists = orgCmd.getOptions().some(opt => opt == "--check");
+        // --no-checkオプションがあるかどうか控えておく
+        // TODO --no-check は定数にしたい
+        let noCheckOptExists = orgCmd.getOptions().some(opt => opt == eCommandOptions.nocheck);
 
         // コマンドチェック
         let cmd = orgCmd;
@@ -568,12 +595,12 @@ export class Controller {
             eCommands.SendRole,
             memberRoleStr,
             option);
-        
-        // --checkオプションが無ければ、確認なしで各メンバーにDMする
-        if (!checkOptExists) {
+
+        // --no-checkオプションがあるなら、確認なしで各メンバーにDMする
+        if (noCheckOptExists) {
             // sendRoleに渡す
             const sendRoleRet = await this.sendRole(
-                true,/*trueにしてDMから送っていることにする*/ 
+                true,/*trueにしてDMから送っていることにする*/
                 user,
                 new plainTextCommandAnalyser(planeTextForSnedRole));
             if (sendRoleRet.status == 'error') {
@@ -585,7 +612,7 @@ export class Controller {
             });
         }
         else {
-            // --checkオプションがある場合
+            // --no-checkオプションがない場合
             // メッセージに sendRole用コマンドを含める
             result.sendList.push(
                 MyFuncs.createReplyDM(eMessage.C03_SuggestMemberExplain),
@@ -798,6 +825,91 @@ export class Controller {
         }
 
         return MyFuncs.createSuccessReply(eMessage.C06_ClearMemberData,);
+    }
+
+
+    buildTeam = async (isDM: boolean, user: MyUser, ch: TextBasedChannel): Promise<MyResult> => {
+        if (isDM) {
+            // でもOK
+            console.log("dmで受信");
+        }
+
+        if (!ch.isVoiceBased()) {
+            return MyFuncs.createErrorReply(eMessage.C07_NonVoiceCh);
+        }
+
+        const fetchedChannel = (await ch.guild.channels.fetch(ch.id))!;
+        if (!fetchedChannel.isVoiceBased()) {
+            return MyFuncs.createErrorReply(eMessage.C07_NonVoiceCh);
+        }
+
+        // メンバーの取得
+        let members: MyUser[] = [];
+        fetchedChannel.members.forEach(mem => {
+            members.push({ id: mem.id, name: mem.displayName });
+        });
+
+        if (members.length == 0) {
+            return MyFuncs.createErrorReply(eMessage.C07_DataNothing);
+        }
+
+        let teamA: string[] = [];
+        let teamB: string[] = [];
+        let other: string[] = [];
+
+        let members_work = members.concat(); // コピー
+        const picMember = (): MyUser | undefined => {
+            if (members_work.length <= 0) {
+                return undefined;
+            }
+            // ランダムで一つ取り出す
+            let i = MyFuncs.getRandomInt(members_work.length - 1);
+            const mem = members_work[i];
+            // 取り出されたらフィルターで除く
+            members_work = members_work.filter((v, idx) => idx != i).map(v => v);
+            return mem;
+        };
+
+        const max = Math.min(4, Math.ceil(members.length / 2));
+        let mem = picMember();
+        while (mem && teamA.length < max) {
+            teamA.push(mem.name);
+            mem = picMember();
+        }
+        while (mem && teamB.length < max) {
+            teamB.push(mem.name)
+            mem = picMember();
+        }
+        while (mem) {
+            other.push(mem.name);
+            mem = picMember();
+        }
+
+        // 埋め込みメッセージでチームを表示
+        const embedA = new EmbedBuilder()
+            .setColor(Colors.Red)
+            .setTitle('Aチーム！')
+            .setDescription(teamA.length == 0 ? "..." : teamA.join("\n"))
+            .toJSON();
+
+        const embedB = new EmbedBuilder()
+            .setColor(Colors.Blue)
+            .setTitle('Bチーム！')
+            .setDescription(teamB.length == 0 ? "..." : teamB.join("\n"))
+            .toJSON();
+
+        let embeds: APIEmbed[] = [embedA, embedB]
+
+        if (other.length > 0) {
+            const embedOther = new EmbedBuilder()
+                .setColor(Colors.Grey)
+                .setTitle('観戦・休憩')
+                .setDescription(other.join("\n"))
+                .toJSON();
+            embeds.push(embedOther);
+        }
+
+        return MyFuncs.createSuccessReply({ embeds: embeds, },);
     }
 
     static Log = (msg: Message): void => {

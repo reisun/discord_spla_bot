@@ -1,10 +1,10 @@
-import { eCommands, isMyCommand } from "./Commands"
+import { eCommandOptions, eCommands, isMyCommand } from "./Commands"
 import { User as MyUser } from "./db"
 
 
 export class plainTextCommandAnalyser {
     private static readonly OPTION_LIST = [
-        { command: eCommands.SuggestRole, opts: ["--check"] }
+        { command: eCommands.SuggestRole, opts: [eCommandOptions.nocheck] }
     ];
     private _value: string[][];
     private _options: string[];

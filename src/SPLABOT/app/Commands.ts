@@ -76,11 +76,16 @@ export const eCommands = {
     SendRole: "spj_send_role",
     CreateVote: "spj_vote",
     ClearMemberData: "spj_clear",
+    TeamBuilder: "spj_team_build",
 } as const;
-
 export type eCommands = (typeof eCommands)[keyof typeof eCommands];
-
 export const isMyCommand = (v: any): v is eCommands => Object.values(eCommands).some(elm => elm === v);
+
+export const eCommandOptions = {
+    nocheck: "--no-check",
+}
+export type eCommandOptions = (typeof eCommandOptions)[keyof typeof eCommandOptions];
+
 
 // スラッシュコマンドの型がガチガチ過ぎて、こちらの定義⇒discord.jsの定義への変換が
 // めんどくさくてあほらしい…
@@ -117,8 +122,24 @@ export const COMMAND_JSONBODYS: RESTPostAPIChatInputApplicationCommandsJSONBody[
             .setDescription("前回と同じ条件で割り振りを作成できます。\n（このコマンドめんどくさいもんね）")
         )
         .addSubcommand(subcmd => subcmd
-            .setName("send")
-            .setDescription("登録したメンバーに自動で名前・役職を決めてDMします。")
+            .setName("create")
+            .setDescription("指定された内容で参加者に名前・役職を割り振ったリストを作成します。")
+            .addStringOption(opt => opt
+                .setName("name")
+                .setDescription("人狼の際のみんなに付ける共通の名前（個々の判別にはA,B,Cなどを末尾に付けます）を設定できます。\n使用しない場合は`?`（はてな）を入力してください。")
+                .setRequired(true)
+            )
+            .forEach(range(1, 9), (build, i) => build
+                .addStringOption(opt => opt
+                    .setName("role" + i)
+                    .setDescription("村人以外の役職の名前")
+                    .setRequired(i == 1)
+                )
+            ) 
+        )
+        .addSubcommand(subcmd => subcmd
+            .setName("create_no_check")
+            .setDescription("名前・役職の割り振りを誰の確認もなしに参加者にDMします。")
             .addStringOption(opt => opt
                 .setName("name")
                 .setDescription("人狼の際のみんなに付ける共通の名前（個々の判別にはA,B,Cなどを末尾に付けます）を設定できます。\n使用しない場合は`?`（はてな）を入力してください。")
@@ -158,6 +179,10 @@ export const COMMAND_JSONBODYS: RESTPostAPIChatInputApplicationCommandsJSONBody[
     //     .setName(eCommands.ClearMemberData)
     //     .setDescription("ユーザーごとに保存されている情報をクリアします。（メンバーをクリアしたい時や、不具合時に利用する想定）")
     //     .toJSON(),
+    new SlashCommandBuilder()
+        .setName(eCommands.TeamBuilder)
+        .setDescription("ボイチャにいるメンバーで、Aチーム、Bチーム、観戦ほか、にチーム分けします。")
+        .toJSON(),
 ];
 
 export const MAX_MEMBER_COUNT: number = 14;
