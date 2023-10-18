@@ -26,6 +26,8 @@ import { ResultOK } from './Result';
 
 // TODO 追放者の登録をしたい
 // TODO 刷新したREADMEの内容に合わせて改修
+//  /spj_send_role_option
+//  /spj_eject
 
 // 
 // TODO 投票で 中のメッセージを修正したりすると面白いか？
