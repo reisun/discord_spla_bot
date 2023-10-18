@@ -47,25 +47,25 @@ export const COMMAND_JSONBODYS: RESTPostAPIChatInputApplicationCommandsJSONBody[
     // .set～() は 加工後の SlashCommandBuilder が戻り値になっているので
     // 数珠つなぎにできるみたい。
     // .set～() の前にオブジェクトが無いのは、数珠つなぎを改行しているから。
-    new SlashCommandBuilder()
-        .setName(eCommands.Member)
-        .setDescription("メンバーを参照したり追加・削除ができます。")
-        .addSubcommand(subcmd => subcmd
-            .setName("show")
-            .setDescription("現在のメンバーを参照します。")
-        )
-        .addSubcommand(subcmd => subcmd
-            .setName("edit")
-            .setDescription("メンバーを追加・削除します。")
-            .forEach(Utils.range(1, 9), (subcmd, i) => subcmd
-                .addUserOption(opt => opt
-                    .setName("user" + i)
-                    .setDescription("追加・削除するユーザーを指定します。")
-                    .setRequired(i == 1)
-                )
-            )
-        )
-        .toJSON(),
+    // new SlashCommandBuilder()
+    //     .setName(eCommands.Member)
+    //     .setDescription("メンバーを参照したり追加・削除ができます。")
+    //     .addSubcommand(subcmd => subcmd
+    //         .setName("show")
+    //         .setDescription("現在のメンバーを参照します。")
+    //     )
+    //     .addSubcommand(subcmd => subcmd
+    //         .setName("edit")
+    //         .setDescription("メンバーを追加・削除します。")
+    //         .forEach(Utils.range(1, 9), (subcmd, i) => subcmd
+    //             .addUserOption(opt => opt
+    //                 .setName("user" + i)
+    //                 .setDescription("追加・削除するユーザーを指定します。")
+    //                 .setRequired(i == 1)
+    //             )
+    //         )
+    //     )
+    //     .toJSON(),
     new SlashCommandBuilder()
         .setName(eCommands.SuggestRole)
         .setDescription("名前・役職の割り振りを作成できます。")
