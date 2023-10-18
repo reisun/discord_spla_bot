@@ -110,8 +110,8 @@ export class Controller {
         finally {
             await interaction.deleteReply()
                 .catch(console.error);
-            await DiscordUtils.asyncReply(interaction.channel!, interaction.user, plainTextCommand)
-                .catch(console.error);
+            // await DiscordUtils.asyncReply(interaction.channel!, interaction.user, plainTextCommand)
+            //     .catch(console.error);
         }
 
         // 結果に基づき処理
