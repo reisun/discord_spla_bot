@@ -12,17 +12,20 @@ import { MatchKeysAndValues } from 'mongodb';
 //       ゲーム進行を全て管理する必要がでてくるので、状態を知らせるコマンドが多数必要
 //       また、ゲームのアレンジにも弱い、人間がやる方がおもろいはず
 
-// 操作者のメンバー情報を各メンバーに共有できないか
+// TODO 操作者のメンバー情報を各メンバーに共有できないか
 //      ⇒ 操作ごとにメンバーに同じ内容をコピーするというとても荒々しい処理になりそう笑
-//      ボイチャにデータを持たせればイイじゃない…
+//      ⇒ ボイチャにデータを持たせればイイじゃない…
 
 // TODO メンバー登録する際に、同じボイチャにいるメンバーは自動的に登録できるようにしたい
 //      ⇒ 初めからこれで良かった説
 //      ⇒ てか、操作者別のデータも、これで、チャンネルごとのデータ保存で済むのでは？
 //      ⇒ これだったっぽい
+//
+//      ⇒ ボイチャのテキストチャットは何故かdiscordから得られるメンバーの反映が遅い……
 
-// TODO 改修したREADMEに合わせて改修
+// TODO 刷新したREADMEの内容に合わせて改修
 
+// 
 // TODO 投票で 中のメッセージを修正したりすると面白いか？
 // TODO メッセージは組み込みにしたい。本文説明（or 導入メッセージ）<改行> 組み込みメッセージ みたいなフォーマットで。
 // TODO 組み込みメッセージで複数をなるべく一つにしたいし、エラーメッセージには色を付けたりした。
@@ -834,20 +837,16 @@ export class Controller {
             console.log("dmで受信");
         }
 
-        if (!ch.isVoiceBased()) {
-            return MyFuncs.createErrorReply(eMessage.C07_NonVoiceCh);
-        }
-
-        const fetchedChannel = (await ch.guild.channels.fetch(ch.id))!;
-        if (!fetchedChannel.isVoiceBased()) {
-            return MyFuncs.createErrorReply(eMessage.C07_NonVoiceCh);
-        }
-
         // メンバーの取得
         let members: MyUser[] = [];
-        fetchedChannel.members.forEach(mem => {
-            members.push({ id: mem.id, name: mem.displayName });
-        });
+        if (ch.isVoiceBased()) {
+            ch.members.forEach(mem => {
+                members.push({ id: mem.id, name: mem.displayName });
+            });
+        }
+        else {
+            return MyFuncs.createErrorReply(eMessage.C07_NonVoiceCh);
+        }
 
         if (members.length == 0) {
             return MyFuncs.createErrorReply(eMessage.C07_DataNothing);
@@ -857,6 +856,7 @@ export class Controller {
         let teamB: string[] = [];
         let other: string[] = [];
 
+        // ランダムで一つ取り出す
         let members_work = members.concat(); // コピー
         const picMember = (): MyUser | undefined => {
             if (members_work.length <= 0) {
@@ -889,16 +889,16 @@ export class Controller {
         const embedA = new EmbedBuilder()
             .setColor(Colors.Red)
             .setTitle('Aチーム！')
-            .setDescription(teamA.length == 0 ? "..." : teamA.join("\n"))
+            .setDescription(teamA.length == 0 ? "メンバー無し" : teamA.join("\n"))
             .toJSON();
 
         const embedB = new EmbedBuilder()
             .setColor(Colors.Blue)
             .setTitle('Bチーム！')
-            .setDescription(teamB.length == 0 ? "..." : teamB.join("\n"))
+            .setDescription(teamB.length == 0 ? "メンバー無し" : teamB.join("\n"))
             .toJSON();
 
-        let embeds: APIEmbed[] = [embedA, embedB]
+        let embeds: APIEmbed[] = [embedA, embedB];
 
         if (other.length > 0) {
             const embedOther = new EmbedBuilder()
