@@ -68,8 +68,25 @@ export class DiscordUtils {
         return twemojiOut;
     }
 
-    static async asyncReply(message: Message, sendMessage: MessageContent) {
-        const rp = await message.reply(sendMessage);
+    private static addMemtion(user: User, sendMessage: MessageContent): MessageContent{
+        if (typeof sendMessage === "string"){
+            return `${user} ${sendMessage}`;
+        }
+        else {
+            sendMessage.content += `${user} ${sendMessage.content}`;
+            return sendMessage;
+        }
+    }
+
+    /**
+     * メッセージに返信をします。（インタラクションと同じ動作にするため、本来のリプライではなく、メンションを付けて返す機能になりました。）
+     * @param ch 
+     * @param user 
+     * @param sendMessage 
+     * @returns 
+     */
+    static async asyncReply(ch: TextBasedChannel, user: User, sendMessage: MessageContent) {
+        const rp = await ch.send(DiscordUtils.addMemtion(user, sendMessage));
         if (typeof sendMessage === "string")
             return;
         if (sendMessage.addAction)

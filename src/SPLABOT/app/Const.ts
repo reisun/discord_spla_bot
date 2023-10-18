@@ -23,7 +23,7 @@ export const eMessage = {
     // updateMember
     C02_NotAllowFromDM: "メンバー編集はチャンネルから実行してください。（サーバー外のユーザーを登録してBOTがDMとか気まずそうなので…）",
     C02_MemberView_Zero: "現在メンバーはいません。",
-    C02_MemberView: "現在の登録されているメンバーは以下の通りです。\n{0}",
+    C02_MemberView: "現在登録されているメンバーは以下の通りです。\n{0}",
     C02_inner_MemberFormat: "* {0}", // markdown のリスト表記を使う
     C02_UpdatedMember: "メンバーを更新しました。",
     C02_DBError: "予期せぬエラーでメンバーを更新できませんでした…。悔しい…。",

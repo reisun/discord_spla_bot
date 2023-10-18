@@ -41,12 +41,12 @@ import { ResultOK } from './Result';
 //      ⇒ 共通名前付き にするなら、ちゃんと共通名前でやり取りして、
 //          必要なら議論タイムで名乗るってのがゲームだと思うし。
 // TODO controler　は inner と外用で分けたい。例外処理も controlerがわで
-// TODO 操作者だけのメッセージは他ユーザーに見えないようにしたい
 
 const eSendType = {
     sendReply: 1,
     sendReplyByDM: 2,
     sendDMByUserId: 3,
+    sendSameChannel: 4,
 } as const;
 type eSendType = (typeof eSendType)[keyof typeof eSendType];
 
@@ -109,6 +109,8 @@ export class Controller {
         }
         finally {
             await interaction.deleteReply()
+                .catch(console.error);
+            await DiscordUtils.asyncReply(interaction.channel!, interaction.user, plainTextCommand)
                 .catch(console.error);
         }
 
@@ -232,24 +234,28 @@ export class Controller {
         for (const sendObj of result.sendList) {
             switch (sendObj.type) {
                 case eSendType.sendReply:
-                    await DiscordUtils.asyncSendSameChannel(channel, sendObj.sendMessage)
+                    await DiscordUtils.asyncReply(channel, user, sendObj.sendMessage)
                         .catch(console.error);
                     break;
                 case eSendType.sendReplyByDM:
                     await DiscordUtils.asyncDM(user, sendObj.sendMessage)
-                        .catch(e => DiscordUtils.asyncSendSameChannel(channel, Utils.format(eMessage.C00_ReplyDMFailed,)))
+                        .catch(e => DiscordUtils.asyncReply(channel, user, Utils.format(eMessage.C00_ReplyDMFailed,)))
                         .catch(console.error);
                     break;
                 case eSendType.sendDMByUserId:
                     await DiscordUtils.asyncDM_fromUserId(client, sendObj.user.id, sendObj.sendMessage)
                         .catch(e => dmFailedUser.push(sendObj.user));
                     break;
+                case eSendType.sendSameChannel:
+                    await DiscordUtils.asyncSendSameChannel(channel, sendObj.sendMessage)
+                        .catch(console.error);
+                    break;
             }
         }
         if (dmFailedUser.length > 0) {
             const unique = Utils.unique(dmFailedUser, v => v.id);
             const memList = unique.map(u => "* " + u.name).join("\n").replace(/\n$/, "");
-            await DiscordUtils.asyncSendSameChannel(channel, Utils.format(eMessage.C00_OtherDMFailed, memList))
+            await DiscordUtils.asyncReply(channel, user, Utils.format(eMessage.C00_OtherDMFailed, memList))
                 .catch(console.error);
         }
     }
@@ -674,7 +680,7 @@ export class Controller {
             .setTimestamp()
             .toJSON();
 
-        return MyFuncs.createSuccessReply({
+        return MyFuncs.createSuccessSendSameChannel({
             embeds: [embed],
             addAction: async (rp: Message<boolean>) => {
                 for (const memRole of memberRoleList) {
@@ -788,7 +794,7 @@ export class Controller {
             embeds.push(embedOther);
         }
 
-        return MyFuncs.createSuccessReply({ embeds: embeds, },);
+        return MyFuncs.createSuccessSendSameChannel({ embeds: embeds, },);
     }
 
     static Log = (msg: Message): void => {
@@ -835,6 +841,14 @@ class MyFuncs {
         };
     }
 
+    static createSendSameChannel = (msg: eMessage | MessageContent, ...args: unknown[]): SendParams => {
+        return {
+            type: eSendType.sendSameChannel,
+            user: { id: "", name: "" },
+            sendMessage: MyFuncs.updateMessageContent(msg, ...args),
+        };
+    }
+
     static createErrorReply = (msg: eMessage | MessageContent, ...args: unknown[]): MyResult => {
         return {
             status: MyError,
@@ -845,6 +859,12 @@ class MyFuncs {
         return {
             status: MySuccess,
             sendList: [MyFuncs.createReply(msg, ...args)],
+        }
+    }
+    static createSuccessSendSameChannel = (msg: eMessage | MessageContent, ...args: unknown[]): MyResult => {
+        return {
+            status: MySuccess,
+            sendList: [MyFuncs.createSendSameChannel(msg, ...args)],
         }
     }
     //#endregion
