@@ -348,9 +348,6 @@ export class Controller {
             return result;
         }
 
-        // 成功メッセージ
-        result.sendList.push(MyFuncs.createReply(eMessage.C02_UpdatedMember,));
-
         // 参照モードを利用して最終的なメンバーのメッセージを取得し、返信に追加
         (await this.updateMember(isDM, channelId, ch, sender, [])).sendList.forEach(sendObj => {
             result.sendList.push(sendObj);
@@ -518,12 +515,6 @@ export class Controller {
                 MyFuncs.createReplyDM(eMessage.C03_SuggestMemberExplain),
                 MyFuncs.createReplyDM(planeTextForSnedRole),
             );
-
-            if (!isDM) {
-                result.sendList.push(
-                    MyFuncs.createReply(eMessage.C00_ReplyDM),
-                );
-            }
         }
 
         if (!uesPredata) {

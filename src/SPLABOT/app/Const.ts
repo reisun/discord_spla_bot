@@ -9,23 +9,16 @@ export const eMessage = {
     C00_DBError: "DBエラーです（冷たい業務連絡）",
     C00_NoData: "データがありませんでした。\n最初から操作しなおしてください。",
     C00_DataVersionNotSame: "保存中のデータ構成が古いためデータがクリアされました。\n最初から操作しなおしてください。",
-    C00_ReplyDM: "DMで返信しました。",
-    C00_SendDMOtherUser: "他ユーザーにDMしました。",
     C00_ReplyDMFailed: "DMでの返信に失敗しました。DMは許可されていますか？",
     C00_OtherDMFailed: "以下のユーザーへのDMに失敗しました。DMが許可されていないかもしれません。\n{0}",
     C00_VoteOneOnOne: "(1人1票)",
     C00_VoteAny: "(1人複数票OK)",
 
-    // DB登録
-    C01_InsertSuccess: "ようこそ、{0}。",
-    C01_AlreadyIns: "既に操作者としてデータが登録されています。",
-    C01_DBError: "予期せぬエラーで操作者として登録できませんでした。ごめんね…",
     // updateMember
     C02_NotAllowFromDM: "メンバー編集はチャンネルから実行してください。（サーバー外のユーザーを登録してBOTがDMとか気まずそうなので…）",
     C02_MemberView_Zero: "現在メンバーはいません。",
     C02_MemberView: "現在登録されているメンバーは以下の通りです。\n{0}",
     C02_inner_MemberFormat: "* {0}", // markdown のリスト表記を使う
-    C02_UpdatedMember: "メンバーを更新しました。",
     C02_DBError: "予期せぬエラーでメンバーを更新できませんでした…。悔しい…。",
     // roleSuggest
     C03_UsePredata: "以下の前回の設定で割当を作ります！\n名前:`{0}`、村人以外の役職:`{1}`",
