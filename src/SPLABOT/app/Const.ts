@@ -37,7 +37,7 @@ export const eMessage = {
     C04_ChannelIdArgNothing: "コマンドに人狼部屋のチャンネルIDがありません。",
     C04_InvalidChannelId: "チャンネルIDが正しくありません。",
     C04_MemberArgNothing: "コマンドにメンバー設定がありません。",
-    C04_MemberArgNonMatch: "メンバーが更新されている？ 不整合がありました。\n{0} からやり直してみてください。",
+    C04_UnknownMemberContain: "メンバー以外の名前が含まれていたため送信できません。\nコマンドを見直すか、{0} からやり直してみてください。\n（メンバーの名前が変更されたかも？）",
     C04_SendRoleTmpl: "…\n次の人狼が始まります。\n\nあなたの名前と役職は\n名前：**{0}**\n役職：**{1}**\nです。\n…",
     C04_SendKnowTmpl: "…\n**{0}** のあなたにお知らせがあります。\n**{1}** は **{2}** です。\n…",
     C04_DMSuccess: "メンバーにDMしました。",

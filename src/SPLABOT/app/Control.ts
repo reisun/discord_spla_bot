@@ -566,9 +566,9 @@ export class Controller {
         // コマンド情報から、メンバー情報とオプションをパース
         const {memberRoleList, option} = cmd.parseMemberRoleSetting(memberList);
 
-        // 現在登録されているメンバーがコマンドに入って無ければエラー
-        if (memberList.length != memberRoleList.length) {
-            return MyFuncs.createErrorReply(eMessage.C04_MemberArgNonMatch, eCommands.SuggestRole);
+        // メンバーより少ない分には良しとする。参加者以外がメンバーに入っている場合はエラー
+        if (memberRoleList.some(mr => !memberList.some(m => m.id == mr.id))) {
+            return MyFuncs.createErrorReply(eMessage.C04_UnknownMemberContain, eCommands.SuggestRole);
         }
 
         // 送信コマンドを記憶する
