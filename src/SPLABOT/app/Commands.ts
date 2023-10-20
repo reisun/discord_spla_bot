@@ -27,6 +27,7 @@ export const eCommands = {
     SuggestRole: "spj_role",
     SendRole: "spj_send_role",
     CreateVote: "spj_vote",
+    EjectFromVote: "spj_eject",
     ClearMemberData: "spj_clear",
     TeamBuilder: "spj_team_build",
 } as const;
@@ -35,9 +36,17 @@ export const isMyCommand = (v: any): v is eCommands => Object.values(eCommands).
 
 export const eCommandOptions = {
     nocheck: "--no-check",
+    show: "-show",
+    add: "-add",
+    delete: "-delete",
 }
 export type eCommandOptions = (typeof eCommandOptions)[keyof typeof eCommandOptions];
 
+const SUPPORT_OPTION_LIST = [
+    { command: eCommands.SuggestRole, opts: [eCommandOptions.nocheck] },
+    { command: eCommands.Member, opts: [eCommandOptions.show, eCommandOptions.add, eCommandOptions.delete] },
+    { command: eCommands.EjectFromVote, opts: [eCommandOptions.show, eCommandOptions.add, eCommandOptions.delete] }
+];
 
 // スラッシュコマンドの型がガチガチ過ぎて、こちらの定義⇒discord.jsの定義への変換が
 // めんどくさくてあほらしい…
@@ -47,22 +56,25 @@ export const COMMAND_JSONBODYS: RESTPostAPIChatInputApplicationCommandsJSONBody[
     // .set～() は 加工後の SlashCommandBuilder が戻り値になっているので
     // 数珠つなぎにできるみたい。
     // .set～() の前にオブジェクトが無いのは、数珠つなぎを改行しているから。
+
     new SlashCommandBuilder()
         .setName(eCommands.Member)
-        .setDescription("メンバーを参照したり追加・削除ができます。")
-        .addSubcommand(subcmd => subcmd
-            .setName("show")
-            .setDescription("現在のメンバーを参照します。")
+        .setDescription("人狼参加メンバーの追加、削除、参照ができます。")
+        .addStringOption(opt => opt
+            .setName("option")
+            .setDescription("実施する操作を指定します。")
+            .setChoices(
+                { name: "メンバーの追加", value: eCommandOptions.add },
+                { name: "メンバーの削除", value: eCommandOptions.delete },
+                { name: "確認のみ", value: eCommandOptions.show },
+            )
+            .setRequired(true)
         )
-        .addSubcommand(subcmd => subcmd
-            .setName("edit")
-            .setDescription("メンバーを追加・削除します。")
-            .forEach(Utils.range(1, 9), (subcmd, i) => subcmd
-                .addUserOption(opt => opt
-                    .setName("user" + i)
-                    .setDescription("追加・削除するユーザーを指定します。")
-                    .setRequired(i == 1)
-                )
+        .forEach(Utils.range(1, 9), (build, i) => build
+            .addUserOption(opt => opt
+                .setName("user" + i)
+                .setDescription("追加する（または削除する）ユーザー。未指定の場合は確認のみになります。")
+                .setRequired(false)
             )
         )
         .toJSON(),
@@ -78,7 +90,7 @@ export const COMMAND_JSONBODYS: RESTPostAPIChatInputApplicationCommandsJSONBody[
             .setDescription("指定された内容で参加者に名前・役職を割り振ったリストを作成します。")
             .addStringOption(opt => opt
                 .setName("name")
-                .setDescription("人狼の際のみんなに付ける共通の名前（個々の判別にはA,B,Cなどを末尾に付けます）を設定できます。\n使用しない場合は`?`（はてな）を入力してください。")
+                .setDescription("人狼の際のみんなに付ける共通の名前")
                 .setRequired(true)
             )
             .forEach(Utils.range(1, 9), (build, i) => build
@@ -89,22 +101,23 @@ export const COMMAND_JSONBODYS: RESTPostAPIChatInputApplicationCommandsJSONBody[
                 )
             )
         )
-        .addSubcommand(subcmd => subcmd
-            .setName("create_no_check")
-            .setDescription("名前・役職の割り振りを誰の確認もなしに参加者にDMします。")
-            .addStringOption(opt => opt
-                .setName("name")
-                .setDescription("人狼の際のみんなに付ける共通の名前（個々の判別にはA,B,Cなどを末尾に付けます）を設定できます。\n使用しない場合は`?`（はてな）を入力してください。")
-                .setRequired(true)
-            )
-            .forEach(Utils.range(1, 9), (build, i) => build
-                .addStringOption(opt => opt
-                    .setName("role" + i)
-                    .setDescription("村人以外の役職の名前")
-                    .setRequired(i == 1)
-                )
-            )
-        )
+        // 今のところＧＭは必ず必要なので、使うことがない
+        // .addSubcommand(subcmd => subcmd
+        //     .setName(eCommandOptions.nocheck)
+        //     .setDescription("名前・役職の割り振りを誰の確認もなしに参加者にDMできます。")
+        //     .addStringOption(opt => opt
+        //         .setName("name")
+        //         .setDescription("人狼の際のみんなに付ける共通の名前")
+        //         .setRequired(true)
+        //     )
+        //     .forEach(Utils.range(1, 9), (build, i) => build
+        //         .addStringOption(opt => opt
+        //             .setName("role" + i)
+        //             .setDescription("村人以外の役職の名前")
+        //             .setRequired(i == 1)
+        //         )
+        //     )
+        // )
         .toJSON(),
     // DMからの送信が前提なので スラッシュコマンドは非公開とする
     // new SlashCommandBuilder()
@@ -125,7 +138,28 @@ export const COMMAND_JSONBODYS: RESTPostAPIChatInputApplicationCommandsJSONBody[
         .setName(eCommands.CreateVote)
         .setDescription("前回メンバーに知らせた役職を元に、投票フォームを作成します。")
         .toJSON(),
-    // スラッシュコマンドでは非公開にする。簡単に実行できてしまうので
+    new SlashCommandBuilder()
+        .setName(eCommands.EjectFromVote)
+        .setDescription("指定したメンバーを次回の投票から除きます。")
+        .addStringOption(opt => opt
+            .setName("option")
+            .setDescription("実施する操作を指定します。")
+            .setChoices(
+                { name: "除外メンバーの追加", value: eCommandOptions.add },
+                { name: "除外の取り消し", value: eCommandOptions.delete },
+                { name: "確認のみ", value: eCommandOptions.show },
+            )
+            .setRequired(true)
+        )
+        .forEach(Utils.range(1, 9), (build, i) => build
+            .addUserOption(opt => opt
+                .setName("user" + i)
+                .setDescription("除外する（または除外を取り消す）ユーザー。未指定の場合は確認のみになります。")
+                .setRequired(false)
+            )
+        )
+        .toJSON(),
+    // スラッシュコマンドでは非公開にする。簡単に実行できてしまうのは良くないので
     // TODO メッセージに対する数秒間待ち受けを作って、本当に消して良いか回答させるような処理ができないか
     // new SlashCommandBuilder()
     //     .setName(eCommands.ClearMemberData)
@@ -140,7 +174,7 @@ export const COMMAND_JSONBODYS: RESTPostAPIChatInputApplicationCommandsJSONBody[
 /**
  * インタラクションのコマンドパーサー
  */
-export class interactionCommandParser {
+export class InteractionCommandParser {
     /**
      * スラッシュコマンドのインタラクションから平文のコマンドへ変換する
      * @param client 
@@ -158,18 +192,20 @@ export class interactionCommandParser {
             return { plainTextCommand: plainTextCommand, mentionUsers: mentionUsers };
         }
 
+        if (!isMyCommand(interaction.commandName)) {
+            return { plainTextCommand: plainTextCommand, mentionUsers: mentionUsers };
+        }
+
         plainTextCommand = "/" + interaction.commandName;
         for (const opt of interaction.options.data) {
-            if (opt.type == ApplicationCommandOptionType.Subcommand && opt.name == "edit") {
-                if (!opt.options) {
-                    continue;
+            if (interaction.commandName == eCommands.Member){
+                if (opt.type == ApplicationCommandOptionType.String && opt.name == "option"){
+                    plainTextCommand += " " + opt.value;
                 }
-                for (const subopt of opt.options) {
-                    if (subopt.type == ApplicationCommandOptionType.User) {
-                        const userid = <string>subopt.value;
-                        const user = (await client.users.fetch(userid));
-                        mentionUsers.push({id: userid, name: user.displayName});
-                    }
+                else if (opt.type == ApplicationCommandOptionType.User) {
+                    const userid = <string>opt.value;
+                    const user = (await client.users.fetch(userid));
+                    mentionUsers.push({ id: userid, name: user.displayName });
                 }
             }
             if (opt.type == ApplicationCommandOptionType.Subcommand && opt.name == "again") {
@@ -188,11 +224,11 @@ export class interactionCommandParser {
                     }
                 }
             }
-            if (opt.type == ApplicationCommandOptionType.Subcommand && opt.name == "create_no_check") {
+            if (opt.type == ApplicationCommandOptionType.Subcommand && opt.name == eCommandOptions.nocheck) {
+                plainTextCommand += " " + opt.name;
                 if (!opt.options) {
                     continue;
                 }
-                plainTextCommand += " " + eCommandOptions.nocheck;
                 for (const subopt of opt.options) {
                     if (subopt.type == ApplicationCommandOptionType.String && subopt.name == "name") {
                         plainTextCommand += " " + subopt.value;
@@ -200,6 +236,16 @@ export class interactionCommandParser {
                     if (subopt.type == ApplicationCommandOptionType.String && subopt.name.match(/^role/)) {
                         plainTextCommand += " " + subopt.value;
                     }
+                }
+            }
+            if (interaction.commandName == eCommands.EjectFromVote){
+                if (opt.type == ApplicationCommandOptionType.String && opt.name == "option"){
+                    plainTextCommand += " " + opt.value;
+                }
+                else if (opt.type == ApplicationCommandOptionType.User) {
+                    const userid = <string>opt.value;
+                    const user = (await client.users.fetch(userid));
+                    mentionUsers.push({ id: userid, name: user.displayName });
                 }
             }
         }
@@ -210,9 +256,6 @@ export class interactionCommandParser {
  * 平文のコマンドパーサ
  */
 export class plainTextCommandParser {
-    private static readonly OPTION_LIST = [
-        { command: eCommands.SuggestRole, opts: [eCommandOptions.nocheck] }
-    ];
     private _value: string[][];
     private _options: string[];
     constructor(public orgString: string) {
@@ -223,8 +266,8 @@ export class plainTextCommandParser {
         this._options = [];
 
         // オプションがある場合は、オプションと値を分離する
-        if (plainTextCommandParser.OPTION_LIST.some(v => v.command == this.command)) {
-            const opts = plainTextCommandParser.OPTION_LIST.filter(v => v.command == this.command)[0].opts;
+        if (SUPPORT_OPTION_LIST.some(v => v.command == this.command)) {
+            const opts = SUPPORT_OPTION_LIST.filter(v => v.command == this.command)[0].opts;
             const ret = plainTextCommandParser.separatOptionsAndValues(this._value, opts);
             this._options = ret.options;
             this._value = ret.values;
@@ -237,8 +280,8 @@ export class plainTextCommandParser {
     getValue(rowIdx: number, itemIdx: number): string | null {
         return this._value.at(rowIdx)?.at(itemIdx) ?? null;
     }
-    getOptions(): string[] {
-        return this._options;
+    existsOption(opt: eCommandOptions): boolean {
+        return this._options.includes(opt);
     }
     isEmpty(): boolean {
         return this.orgString ? false : true;
@@ -259,7 +302,7 @@ export class plainTextCommandParser {
         return this._value.length;
     }
 
-    parseMemberRoleSetting = (memberList: MyUser[]): { memberRoleList: MemberRoleInfo[], option: SendMemberRoleOption[]} => {
+    parseMemberRoleSetting = (memberList: MyUser[]): { memberRoleList: MemberRoleInfo[], option: SendMemberRoleOption[] } => {
         const cmd = this;
 
         // メンバー、オプション情報
@@ -303,7 +346,7 @@ export class plainTextCommandParser {
             });
         }
 
-        return { memberRoleList: memberRoleInfoList, option: sendRoleOptionList};
+        return { memberRoleList: memberRoleInfoList, option: sendRoleOptionList };
     }
 
     private static separatOptionsAndValues(

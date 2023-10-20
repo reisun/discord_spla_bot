@@ -1,8 +1,8 @@
 import { Client, Channel, User, Message, Interaction, TextBasedChannel, EmbedBuilder, Colors, MessageReaction, PartialMessageReaction, PartialUser, APIEmbed, } from 'discord.js';
 import env from "../inc/env.json";
 import { MAX_MEMBER_COUNT, ALPHABET_TABLE, eMessage } from "./Const";
-import { User as MyUser, SplaJinroData} from "./Model";
-import { eCommandOptions, eCommands, interactionCommandParser, isMyCommand, plainTextCommandParser } from "./Commands"
+import { User as MyUser, SplaJinroData } from "./Model";
+import { eCommandOptions, eCommands, InteractionCommandParser, isMyCommand, plainTextCommandParser } from "./Commands"
 import { Utils } from "./Utilis";
 import { DiscordUtils, MessageContent } from "./DiscordUtils";
 import { DBAccesser, DBUtils } from "./db";
@@ -93,14 +93,14 @@ export class Controller {
 
         // Discord API の仕様上 3秒以内に何らかのレスポンスを返す必要あり
         // 考え中的なレスポンスを返す
-        await interaction.reply( {content: "*応答中…*", ephemeral: true})
+        await interaction.reply({ content: "*応答中…*", ephemeral: true })
             .catch(console.error);
 
         // --- コマンド解析
 
         // 先に平文のコマンドでの動作を整備していたためそちらに合わせる。
         // 平文のコマンドにコンバート
-        const {plainTextCommand, mentionUsers} = await interactionCommandParser.asyncCconvertPlaneTextCommand(client, interaction);
+        const { plainTextCommand, mentionUsers } = await InteractionCommandParser.asyncCconvertPlaneTextCommand(client, interaction);
         // console.log("converted to plainTextCommand. \n" + plainTextCommand);
 
         let result: MyResult;
@@ -208,13 +208,15 @@ export class Controller {
 
         switch (cmdParser.command) {
             case eCommands.Member:
-                return await this.updateMember(isDM, channel.id, channel, sender, users);
+                return await this.updateMember(isDM, channel.id, channel, sender, cmdParser, users);
             case eCommands.SuggestRole:
                 return await this.suggestRole(isDM, channel.id, channel, sender, cmdParser);
             case eCommands.SendRole:
                 return await this.sendRole(isDM, channel.client, sender, cmdParser, true/* コマンドが送られている=>GMが送っていると判断 */);
             case eCommands.CreateVote:
                 return await this.createVote(isDM, channel.id, channel, sender, user);
+            case eCommands.EjectFromVote:
+                return await this.ejectMemberForVote(isDM, channel.id, channel, sender, cmdParser, users);
             case eCommands.ClearMemberData:
                 return await this.clearData(isDM, channel.id);
             case eCommands.TeamBuilder:
@@ -260,16 +262,10 @@ export class Controller {
         }
     }
 
-    updateMember = async (isDM: boolean, channelId: string, ch: Channel, sender: MyUser, inputMenbers: MyUser[]): Promise<MyResult> => {
+    updateMember = async (isDM: boolean, channelId: string, ch: Channel, sender: MyUser, cmd: plainTextCommandParser, inputMenbers: MyUser[]): Promise<MyResult> => {
         if (isDM && inputMenbers.length > 0) {
             // ではだめにする。メンバーのメンションが必要なので
             return MyFuncs.createErrorReply(eMessage.C02_NotAllowFromDM);
-        }
-
-        // startGMの結果も入るのであらかじめ作成
-        let result: MyResult = {
-            status: MySuccess,
-            sendList: [],
         }
 
         const { status, value: data } = await this.connectedDB.asyncSelectSplaJinroDataForce(channelId);
@@ -277,82 +273,76 @@ export class Controller {
             return MyFuncs.createErrorReply(status);
         }
 
+        // 現人狼参加者
         let memberList = MyFuncs.getSplaJinroMemberList(data, ch, sender, false);
-        if (inputMenbers.length == 0) {
-            // メンションが０人なら参照モード
+
+        // 処理前に入力メンバーの メンバー名の空白を _ アンスコ に置換しておく
+        for (let i = 0; i < inputMenbers.length; i++) {
+            inputMenbers[i].name = inputMenbers[i].name.replace(/[ 　]+/, "_");
+        }
+
+        // ---参照モード
+        if (cmd.existsOption(eCommandOptions.show) || inputMenbers.length == 0) {
             if (memberList.length == 0) {
                 // 参照したがメンバー０人。メッセージを追加して返却
-                result.sendList.push(MyFuncs.createReply(eMessage.C02_MemberView_Zero,));
-                return result;
+                return MyFuncs.createSuccessReply(eMessage.C02_MemberView_Zero,);
             }
             // 現在のメンバーを返却
             let msg = memberList.map(mem =>
                 Utils.format(eMessage.C02_inner_MemberFormat, mem.name)
             ).join("\n");
-            result.sendList.push(MyFuncs.createReply(eMessage.C02_MemberView, msg));
-            return result;
+            return MyFuncs.createSuccessReply(eMessage.C02_MemberView, msg);
         }
 
         // ---追加・削除モード
-        // 既存メンバーと入力値メンバを重複無しで配列化
-        const concatMemberList = Utils.unique(memberList.concat(inputMenbers), v => v.id);
-        // "追加"・"削除"・"変わらず"、のフラグを付ける
+
+        // 既存メンバーに対して追加削除を行ったリストを作成
+        let newMemberList: MyUser[] = [];
+        if (cmd.existsOption(eCommandOptions.add)) {
+            newMemberList = memberList.concat(inputMenbers);
+        }
+        else {
+            newMemberList = memberList.filter(m => !inputMenbers.some(im => im.id == m.id));
+        }
+        newMemberList = Utils.unique(newMemberList, v => v.id);
+
+        // チャンネル内のメンバーと現在のメンバーを重複無しで合わせたリスト（＝今回の処理に関係するユーザーのリスト）を作る
+        const channelMembers = ch.isVoiceBased() ? ch.members.map(m => { return { id: m.id, name: m.displayName }; }) : [];
+        const concatMemberList = Utils.unique(channelMembers.concat(newMemberList), v => v.id);
+        // 今回の処理に関係するユーザーが、チャンネル内のメンバーを基準にして "追加"・"削除"・"変わらず"、のどれに当たるのかフラグを付ける
         let concatMemberListWithFlag: { member: MyUser, status: "add" | "delete" | "none" }[] = [];
         concatMemberList.forEach(cctMen => {
-            const existing = memberList.some(orgMem => orgMem.id == cctMen.id);
-            const isInInput = inputMenbers.some(inpMem => inpMem.id == cctMen.id);
-            // 既存メンバーにいる かつ 入力にもいた ⇒ 削除
-            if (existing && isInInput) {
+            const isChannelMem = channelMembers.some(chMem => chMem.id == cctMen.id);
+            const isInNew = newMemberList.some(inpMem => inpMem.id == cctMen.id);
+            // チャンネルメンバーにいる かつ 現在のメンバーにもいる ⇒ そのまま
+            if (isChannelMem && isInNew) {
+                concatMemberListWithFlag.push({ member: cctMen, status: "none" });
+            }
+            // チャンネルメンバーにいる かつ 現在のメンバーにいない ⇒ 削除
+            else if (isChannelMem && !isInNew) {
                 concatMemberListWithFlag.push({ member: cctMen, status: "delete" });
             }
-            // 既存メンバーにいない かつ 入力にいた ⇒ 追加
-            else if (!existing && isInInput) {
+            // チャンネルメンバーにいない かつ 現在のメンバーにいる ⇒ 追加
+            else if (!isChannelMem && isInNew) {
                 concatMemberListWithFlag.push({ member: cctMen, status: "add" });
             }
-            // 既存メンバーにいる かつ 入力にいない ⇒ そのまま
-            else if (existing && !isInInput) {
-                // ボイスチャンネル以外の場合は、何もしないと元のメンバーがいないため情報が消える ⇒ add に加える
-                concatMemberListWithFlag.push({ member: cctMen, status: ch.isVoiceBased() ? "none" : "add" });
-            }
-            // 既存メンバーにいない かつ 入力にいない ⇒ そのまま
+            // チャンネルメンバーにいない かつ 現在のメンバーにいない ⇒ そのまま
             else {
                 concatMemberListWithFlag.push({ member: cctMen, status: "none" });
             }
         });
 
-        // メンバー更新
-        const addList = concatMemberListWithFlag
-            .filter(workMem => workMem.status == "add")
-            .map(wMem => wMem.member);
-
-        const ignoreList = concatMemberListWithFlag
-            .filter(workMem => workMem.status == "delete")
-            .map(wMem => wMem.member);
-
-        // ここで メンバー名の空白を _ アンスコ に置換しておく
-        for (let i = 0; i < addList.length; i++) {
-            addList[i].name = addList[i].name.replace(/[ 　]+/, "_");
-        }
-        for (let i = 0; i < ignoreList.length; i++) {
-            ignoreList[i].name = ignoreList[i].name.replace(/[ 　]+/, "_");
-        }
-
         const updSuccess = await this.connectedDB.asyncUpdateSplaJinroData(channelId, {
-            'add_member_list': addList,
-            'ignore_member_list': ignoreList,
+            'add_member_list': concatMemberListWithFlag.filter(m => m.status == "add").map(m => m.member),
+            'ignore_member_list': concatMemberListWithFlag.filter(m => m.status == "delete").map(m => m.member),
         });
-
         if (!updSuccess) {
-            result.status = MyError;
-            result.sendList.push(MyFuncs.createReply(eMessage.C02_DBError,));
-            return result;
+            return MyFuncs.createErrorReply(eMessage.C02_DBError,);
         }
 
-        // 参照モードを利用して最終的なメンバーのメッセージを取得し、返信に追加
-        (await this.updateMember(isDM, channelId, ch, sender, [])).sendList.forEach(sendObj => {
-            result.sendList.push(sendObj);
-        });
-        return result;
+        // 参照モードを利用して最終的なメンバーのメッセージを取得し、返信
+        const showCmd = new plainTextCommandParser(`${eCommands.Member} ${eCommandOptions.show}`);
+        return await this.updateMember(isDM, channelId, ch, sender, showCmd, []);
     }
 
     suggestRole = async (isDM: boolean, channelId: string, ch: Channel, sender: MyUser, orgCmd: plainTextCommandParser): Promise<MyResult> => {
@@ -372,9 +362,8 @@ export class Controller {
             sendList: [],
         }
 
-        // --no-checkオプションがあるかどうか控えておく
-        // TODO --no-check は定数にしたい
-        let noCheckOptExists = orgCmd.getOptions().some(opt => opt == eCommandOptions.nocheck);
+        // 前回コマンドを利用する場合もあるため、このタイミングで--no-checkオプションがあるかどうか控えておく
+        let noCheckOptExists = orgCmd.existsOption(eCommandOptions.nocheck);
 
         // コマンドチェック
         let cmd = orgCmd;
@@ -564,16 +553,17 @@ export class Controller {
         }
 
         // コマンド情報から、メンバー情報とオプションをパース
-        const {memberRoleList, option} = cmd.parseMemberRoleSetting(memberList);
+        const { memberRoleList, option } = cmd.parseMemberRoleSetting(memberList);
 
         // メンバーより少ない分には良しとする。参加者以外がメンバーに入っている場合はエラー
         if (memberRoleList.some(mr => !memberList.some(m => m.id == mr.id))) {
             return MyFuncs.createErrorReply(eMessage.C04_UnknownMemberContain, eCommands.SuggestRole);
         }
 
-        // 送信コマンドを記憶する
+        // 送信コマンドを記憶する。投票除外メンバーをリセットする
         const updSuccess = await this.connectedDB.asyncUpdateSplaJinroData(channelId, {
             'prevSendRoleCommandString': cmd.orgString,
+            'eject_member_list': [],
         });
         if (!updSuccess) {
             return MyFuncs.createErrorReply(eMessage.C04_DBError,);
@@ -637,7 +627,7 @@ export class Controller {
         }
 
         if (!data.prevSendRoleCommandString) {
-            return MyFuncs.createErrorReply(eMessage.C05_RoleDataNothing);
+            return MyFuncs.createErrorReply(eMessage.C05_NotStartJinro);
         }
 
         // isSenderRoleChecked(=GMかどうか) は 両方受けれるように false にしておく。
@@ -645,11 +635,17 @@ export class Controller {
         const memberList = MyFuncs.getSplaJinroMemberList(data, ch, sender, false/* isSenderRoleChecked */);
 
         // 前回のメンバー通知コマンドをパース
-        const {memberRoleList, option} = new plainTextCommandParser(data.prevSendRoleCommandString)
+        let { memberRoleList, option } = new plainTextCommandParser(data.prevSendRoleCommandString)
             .parseMemberRoleSetting(memberList);
 
         if (memberRoleList.length == 0) {
             return MyFuncs.createErrorReply(eMessage.C05_RoleDataNothingInData);
+        }
+
+        // 追放者を除く
+        memberRoleList = memberRoleList.filter(m => !data.eject_member_list.some(em => em.id == m.id));
+        if (memberRoleList.length == 0) {
+            return MyFuncs.createErrorReply(eMessage.C05_AllMemberEjected);
         }
 
         let msg = "";
@@ -683,6 +679,104 @@ export class Controller {
     }
 
     /**
+     * 投票から除外する
+     * @param isDM 
+     * @param user 
+     * @returns 
+     */
+    ejectMemberForVote = async (isDM: boolean, channelId: string, ch: Channel, sender: MyUser, cmd: plainTextCommandParser, inputMenbers: MyUser[]): Promise<MyResult> => {
+        if (isDM) {
+            // メンバーを指定するのでサーバーのチャンネルからどうぞ
+            return MyFuncs.createErrorReply(eMessage.C06_NotAllowFromDM);
+        }
+
+        const { status, value: data } = await this.connectedDB.asyncSelectSplaJinroDataForce(channelId);
+        if (status != ResultOK) {
+            return MyFuncs.createErrorReply(status);
+        }
+
+        if (!data.prevSendRoleCommandString) {
+            return MyFuncs.createErrorReply(eMessage.C05_NotStartJinro);
+        }
+
+        // 現追放者リスト
+        let ejectList = data.eject_member_list;
+
+        // 処理前に入力メンバーの メンバー名の空白を _ アンスコ に置換しておく
+        for (let i = 0; i < inputMenbers.length; i++) {
+            inputMenbers[i].name = inputMenbers[i].name.replace(/[ 　]+/, "_");
+        }
+
+        // ---参照モード
+        if (cmd.existsOption(eCommandOptions.show) || inputMenbers.length == 0) {
+            // 直近の役職リストから現在のゲームのメンバーを取得
+            const memberList = MyFuncs.getSplaJinroMemberList(data, ch, sender, false/* 役職リストでGMを含んでいるかそうでないか分かるのでここでは除かない */);
+            const { memberRoleList, option } = new plainTextCommandParser(data.prevSendRoleCommandString).parseMemberRoleSetting(memberList);
+
+            let alived = memberRoleList
+                .filter(m => !ejectList.some(em => em.id == m.id))
+                .map(mem =>
+                    Utils.format(eMessage.C06_inner_MemberFormat, `${mem.theName} (${mem.name})`)
+                ).join("\n");
+
+            // 埋め込みメッセージでチームを表示
+            const embedAlive = new EmbedBuilder()
+                .setColor(Colors.Blue)
+                .setTitle('生存者')
+                .setDescription(alived == "" ? "--生存者なし--" : alived)
+                .toJSON();
+
+            let ejected = ejectList.map(mem =>
+                Utils.format(eMessage.C06_inner_MemberFormat, mem.name)
+            ).join("\n");
+
+            const embedEjected = new EmbedBuilder()
+                .setColor(Colors.Grey)
+                .setTitle('追放された方々')
+                .setDescription(ejected == "" ? "まだいませんよ。まだね。" : ejected)
+                .toJSON();
+
+            return MyFuncs.createSuccessSendSameChannel({
+                content: "現在の生存者と追放者は以下の通りです。",
+                embeds: [embedAlive, embedEjected],
+            },);
+        }
+
+        // ---追加モード
+        if (cmd.existsOption(eCommandOptions.add)) {
+            ejectList = Utils.unique(ejectList.concat(inputMenbers), u => u.id);
+            const updSuccess = await this.connectedDB.asyncUpdateSplaJinroData(channelId, {
+                'eject_member_list': ejectList,
+            });
+            if (!updSuccess) {
+                return MyFuncs.createErrorReply(eMessage.C00_DBError,);
+            }
+
+            // 参照モードを利用して最終的なメンバーのメッセージを取得し、返信
+            const showCmd = new plainTextCommandParser(`${eCommands.EjectFromVote} ${eCommandOptions.show}`);
+            return await this.ejectMemberForVote(isDM, channelId, ch, sender, showCmd, []);
+        }
+
+        // ---削除モード
+        if (cmd.existsOption(eCommandOptions.delete)) {
+            ejectList = ejectList.filter(m => !inputMenbers.some(im => im.id == m.id));
+            const updSuccess = await this.connectedDB.asyncUpdateSplaJinroData(channelId, {
+                'eject_member_list': ejectList,
+            });
+            if (!updSuccess) {
+                return MyFuncs.createErrorReply(eMessage.C00_DBError,);
+            }
+
+            // 参照モードを利用して最終的なメンバーのメッセージを取得し、返信
+            const showCmd = new plainTextCommandParser(`${eCommands.EjectFromVote} ${eCommandOptions.show}`);
+            return await this.ejectMemberForVote(isDM, channelId, ch, sender, showCmd, []);
+        }
+
+        // ここには来ないはず（コマンドミス以外では）
+        return MyFuncs.createSuccessReply(`${cmd.command} のコマンド指定が間違っているようどす。`);
+    }
+
+    /**
      * データ削除
      * @param isDM 
      * @param user 
@@ -696,15 +790,15 @@ export class Controller {
 
         const { status, value: data } = await this.connectedDB.asyncSelectSplaJinroDataForce(channelId,);
         if (!data) {
-            return MyFuncs.createErrorReply(eMessage.C06_DataNothing,);
+            return MyFuncs.createErrorReply(eMessage.C07_DataNothing,);
         }
 
         const delSuccess = await this.connectedDB.asyncDeleteSplaJinroData(channelId);
         if (!delSuccess) {
-            return MyFuncs.createErrorReply(eMessage.C06_DBError,);
+            return MyFuncs.createErrorReply(eMessage.C07_DBError,);
         }
 
-        return MyFuncs.createSuccessReply(eMessage.C06_ClearMemberData,);
+        return MyFuncs.createSuccessReply(eMessage.C07_ClearMemberData,);
     }
 
 
@@ -785,7 +879,7 @@ export class Controller {
             embeds.push(embedOther);
         }
 
-        return MyFuncs.createSuccessSendSameChannel({ embeds: embeds, },);
+        return MyFuncs.createSuccessSendSameChannel({ content: "チームを作りました", embeds: embeds, },);
     }
 
     static Log = (msg: Message): void => {
@@ -865,10 +959,10 @@ class MyFuncs {
      * @param data 
      * @param ch 
      * @param sender コマンド送信者
-     * @param isSenderRoleChecked 送信者がロールの内容を確認したかどうか(=GMかどうか)
+     * @param senderIsGM 送信者がロールの内容を確認したかどうか(=GMかどうか)
      * @returns 
      */
-    static getSplaJinroMemberList(data: SplaJinroData, ch: Channel, sender: MyUser, isSenderRoleChecked: boolean): MyUser[] {
+    static getSplaJinroMemberList(data: SplaJinroData, ch: Channel, sender: MyUser, senderIsGM: boolean): MyUser[] {
         let members: MyUser[] = [];
         if (ch.isVoiceBased()) {
             ch.members.forEach(m => members.push({ id: m.id, name: m.displayName }));
@@ -879,7 +973,7 @@ class MyFuncs {
             members = members.filter(m => m.id != igm.id);
         });
         // コマンド送信者がロールを確認している場合は、GMとみなすため、参加者からは省く
-        if (isSenderRoleChecked) {
+        if (senderIsGM) {
             members = members.filter(m => m.id != sender.id);
         }
         return members;

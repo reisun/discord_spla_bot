@@ -45,12 +45,19 @@ export const eMessage = {
     // Vote
     C05_NotAllowFromDM: "チャンネルからコマンドを実行してください。",
     C05_MemberNothing: "メンバーがいない？😨",
-    C05_RoleDataNothing: "メンバーにDM送信した情報がありません。ロール作成からやり直して見てください。",
+    C05_NotStartJinro: "人狼がまだ始まっていません。（メンバーに役職DM未送信）ロール作成からやり直してみてください。",
     C05_RoleDataNothingInData: "メンバーにDM送信時にメンバーが０人だったようです。（そんなことある？）ロール作成からやり直して見てください。",
+    C05_AllMemberEjected: "全員が追放されているため、投票できませんでした。",
+    // ejectMemberForVote
+    C06_NotAllowFromDM: "チャンネルからコマンドを実行してください。",
+    C06_NotStartJinro: "人狼がまだ始まっていません。（メンバーに役職DM未送信）ロール作成からやり直してみてください。",
+    C06_RoleDataNothingInData: "メンバーにDM送信時にメンバーが０人だったようです。（そんなことある？）ロール作成からやり直して見てください。",
+    C06_MemberView: "現在追放されているメンバーは以下の通りです。\n{0}",
+    C06_inner_MemberFormat: "* {0}", // markdown のリスト表記を使う
     // clear memberData
-    C06_ClearMemberData: "登録されたメンバーデータがクリアされました。",
-    C06_DataNothing: "既にデータはクリアされています。",
-    C06_DBError: "予期せぬエラーでメンバーデータがクリアできませんでした。悔しい…", 
+    C07_ClearMemberData: "登録されたメンバーデータがクリアされました。",
+    C07_DataNothing: "既にデータはクリアされています。",
+    C07_DBError: "予期せぬエラーでメンバーデータがクリアできませんでした。悔しい…", 
     // teambuilder
     C07_MemberNotFound: "メンバーがいない？😨",
 } as const;
