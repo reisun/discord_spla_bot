@@ -1,8 +1,8 @@
 import { Client, Channel, User, Message, Interaction, TextBasedChannel, EmbedBuilder, Colors, MessageReaction, PartialMessageReaction, PartialUser, APIEmbed, } from 'discord.js';
 import env from "../inc/env.json";
-import { MAX_MEMBER_COUNT, ALPHABET_TABLE, eMessage } from "./Const";
-import { User as MyUser, SplaJinroData } from "./Model";
-import { eCommandOptions, eCommands, InteractionCommandParser, isMyCommand, plainTextCommandParser } from "./Commands"
+import { MAX_MEMBER_COUNT, ALPHABET_TABLE, eMessage, SPACE_REGXg } from "./Const";
+import { User as MyUser, SendMemberRoleOption, SplaJinroData } from "./Model";
+import { eCommandOptions, eCommands, isMyCommand, CommandParser } from "./Commands"
 import { Utils } from "./Utilis";
 import { DiscordUtils, MessageContent } from "./DiscordUtils";
 import { DBAccesser, DBUtils } from "./db";
@@ -24,10 +24,7 @@ import { ResultOK } from './Result';
 //      ⇒ これだったっぽい
 //      ⇒ 反映済み
 
-// TODO 追放者の登録をしたい
 // TODO 刷新したREADMEの内容に合わせて改修
-//  /spj_send_role_option
-//  /spj_eject
 //  /spj_member （人狼参加者と、ボイスチャンネルに居るが参加者でない人、を表示）
 
 // TODO 投票で 中のメッセージを修正したりすると面白いか？
@@ -100,12 +97,11 @@ export class Controller {
 
         // 先に平文のコマンドでの動作を整備していたためそちらに合わせる。
         // 平文のコマンドにコンバート
-        const { plainTextCommand, mentionUsers } = await InteractionCommandParser.asyncCconvertPlaneTextCommand(client, interaction);
-        // console.log("converted to plainTextCommand. \n" + plainTextCommand);
+        const { parsedCommand: cmd, mentionUsers } = await CommandParser.asyncFromInteraction(client, interaction);
 
         let result: MyResult;
         try {
-            result = await this.processPlaneTextCommand(plainTextCommand, interaction.user, interaction.channel!, mentionUsers);
+            result = await this.processPlaneTextCommand(cmd, interaction.user, interaction.channel!, mentionUsers);
         }
         finally {
             await interaction.deleteReply()
@@ -123,8 +119,8 @@ export class Controller {
         if (!DiscordUtils.isUnresponsiveMessage(client, message.author, message.guild, env.allowed_serv, false))
             return;
 
-        const plainTextCommand = message.content;
-        let mentionUsers: MyUser[] = message.mentions.users.map(itr => {
+        const cmd = CommandParser.fromPlaneText(message.content);
+        const mentionUsers: MyUser[] = message.mentions.users.map(itr => {
             return {
                 id: itr.id,
                 name: itr.displayName,
@@ -132,7 +128,7 @@ export class Controller {
         });
 
         // コマンド処理
-        let result = await this.processPlaneTextCommand(plainTextCommand, message.author, message.channel, mentionUsers);
+        const result = await this.processPlaneTextCommand(cmd, message.author, message.channel, mentionUsers);
 
         // 結果に基づき処理
         this.processResultObj(result, client, message.author, message.channel);
@@ -198,29 +194,30 @@ export class Controller {
         }
     }
 
-    processPlaneTextCommand = async (plainTextCommand: string, user: User, channel: TextBasedChannel, users: MyUser[]): Promise<MyResult> => {
-        let cmdParser = new plainTextCommandParser(plainTextCommand);
+    processPlaneTextCommand = async (cmd: CommandParser, user: User, channel: TextBasedChannel, users: MyUser[]): Promise<MyResult> => {
         let isDM = DiscordUtils.isDM(channel);
         let sender: MyUser = {
             id: user.id,
             name: user.displayName,
         }
 
-        switch (cmdParser.command) {
+        switch (cmd.command) {
             case eCommands.Member:
-                return await this.updateMember(isDM, channel.id, channel, sender, cmdParser, users);
+                return await this.updateMember(isDM, channel.id, channel, sender, cmd, users);
             case eCommands.SuggestRole:
-                return await this.suggestRole(isDM, channel.id, channel, sender, cmdParser);
+                return await this.suggestRole(isDM, channel.id, channel, sender, cmd);
             case eCommands.SendRole:
-                return await this.sendRole(isDM, channel.client, sender, cmdParser, true/* コマンドが送られている=>GMが送っていると判断 */);
+                return await this.sendRole(isDM, channel.client, sender, cmd, true/* コマンドが送られている=>GMが送っていると判断 */);
             case eCommands.CreateVote:
                 return await this.createVote(isDM, channel.id, channel, sender, user);
             case eCommands.EjectFromVote:
-                return await this.ejectMemberForVote(isDM, channel.id, channel, sender, cmdParser, users);
+                return await this.ejectMemberForVote(isDM, channel.id, channel, sender, cmd, users);
+            case eCommands.SendRoleOption:
+                return await this.updateSendRoleOption(isDM, channel.id, cmd);
             case eCommands.ClearMemberData:
                 return await this.clearData(isDM, channel.id);
             case eCommands.TeamBuilder:
-                return await this.buildTeam(isDM, channel.id, channel, sender);
+                return await this.buildTeam(isDM, channel.id, channel, sender, cmd);
             default:
                 return {
                     status: MySuccess,
@@ -262,7 +259,7 @@ export class Controller {
         }
     }
 
-    updateMember = async (isDM: boolean, channelId: string, ch: Channel, sender: MyUser, cmd: plainTextCommandParser, inputMenbers: MyUser[]): Promise<MyResult> => {
+    updateMember = async (isDM: boolean, channelId: string, ch: Channel, sender: MyUser, cmd: CommandParser, inputMenbers: MyUser[]): Promise<MyResult> => {
         if (isDM && inputMenbers.length > 0) {
             // ではだめにする。メンバーのメンションが必要なので
             return MyFuncs.createErrorReply(eMessage.C02_NotAllowFromDM);
@@ -278,7 +275,7 @@ export class Controller {
 
         // 処理前に入力メンバーの メンバー名の空白を _ アンスコ に置換しておく
         for (let i = 0; i < inputMenbers.length; i++) {
-            inputMenbers[i].name = inputMenbers[i].name.replace(/[ 　]+/, "_");
+            inputMenbers[i].name = inputMenbers[i].name.replace(SPACE_REGXg, "_");
         }
 
         // ---参照モード
@@ -341,11 +338,11 @@ export class Controller {
         }
 
         // 参照モードを利用して最終的なメンバーのメッセージを取得し、返信
-        const showCmd = new plainTextCommandParser(`${eCommands.Member} ${eCommandOptions.show}`);
+        const showCmd = CommandParser.fromPlaneText(`${eCommands.Member} ${eCommandOptions.show}`);
         return await this.updateMember(isDM, channelId, ch, sender, showCmd, []);
     }
 
-    suggestRole = async (isDM: boolean, channelId: string, ch: Channel, sender: MyUser, orgCmd: plainTextCommandParser): Promise<MyResult> => {
+    suggestRole = async (isDM: boolean, channelId: string, ch: Channel, sender: MyUser, orgCmd: CommandParser): Promise<MyResult> => {
         if (isDM) {
             // DMからでもOK
             console.log("dmで受信");
@@ -371,7 +368,7 @@ export class Controller {
         if (cmd.getValue(0, 1) == null) {
             // 引数が１個も無い場合は前回のデータを採用
             uesPredata = true;
-            cmd = new plainTextCommandParser(data.prevSuggestRoleCommandString ?? "");
+            cmd = CommandParser.fromPlaneText(data.prev_suggest_role_command_string ?? "");
             if (cmd.isEmpty()) {
                 return MyFuncs.createErrorReply(eMessage.C03_NonAgainData,);
             }
@@ -467,17 +464,12 @@ export class Controller {
                 obj.member.name),
         ).join("\n");
 
-        // とりあえず 知らせるオプションの規定値を設定しておく
-        let option = Utils.format(
-            eMessage.C03_inner_1_know_to_0, "人狼", "狂人");
-
         // sendRole用の平文のコマンドを作成
         const planeTextForSnedRole = Utils.format(
             eMessage.C03_SuggestMember,
             eCommands.SendRole,
             ch.id,
-            memberRoleStr,
-            option);
+            memberRoleStr);
 
         // --no-checkオプションがあるなら、確認なしで各メンバーにDMする
         if (noCheckOptExists) {
@@ -486,7 +478,7 @@ export class Controller {
                 true,/*trueにしてDMから送っていることにする*/
                 ch.client,
                 sender,
-                new plainTextCommandParser(planeTextForSnedRole),
+                CommandParser.fromPlaneText(planeTextForSnedRole),
                 false, /* isSenderRoleChecked */
             );
             if (sendRoleRet.status == 'error') {
@@ -509,7 +501,7 @@ export class Controller {
         if (!uesPredata) {
             // 今回のパラメータを記憶
             const updSuccess = await this.connectedDB.asyncUpdateSplaJinroData(channelId, {
-                'prevSuggestRoleCommandString': cmd.orgString,
+                'prev_suggest_role_command_string': cmd.orgString,
             });
             // これがDBエラーでもメイン処理に弊害は無いのでログだけにする
             if (!updSuccess) {
@@ -519,7 +511,7 @@ export class Controller {
         return result;
     }
 
-    sendRole = async (isDM: boolean, client: Client, sender: MyUser, cmd: plainTextCommandParser, isSenderRoleChecked: boolean): Promise<MyResult> => {
+    sendRole = async (isDM: boolean, client: Client, sender: MyUser, cmd: CommandParser, isSenderRoleChecked: boolean): Promise<MyResult> => {
         if (!isDM) {
             // DMで送らないと視えちゃうのでだめ
             return MyFuncs.createErrorReply(eMessage.C04_NeedDM);
@@ -552,8 +544,8 @@ export class Controller {
             return MyFuncs.createErrorReply(eMessage.C04_MemberNothing,);
         }
 
-        // コマンド情報から、メンバー情報とオプションをパース
-        const { memberRoleList, option } = cmd.parseMemberRoleSetting(memberList);
+        // コマンド情報から、メンバー情報をパース
+        const memberRoleList = cmd.parseMemberRoleSetting(memberList);
 
         // メンバーより少ない分には良しとする。参加者以外がメンバーに入っている場合はエラー
         if (memberRoleList.some(mr => !memberList.some(m => m.id == mr.id))) {
@@ -562,7 +554,7 @@ export class Controller {
 
         // 送信コマンドを記憶する。投票除外メンバーをリセットする
         const updSuccess = await this.connectedDB.asyncUpdateSplaJinroData(channelId, {
-            'prevSendRoleCommandString': cmd.orgString,
+            'prev_send_role_command_string': cmd.orgString,
             'eject_member_list': [],
         });
         if (!updSuccess) {
@@ -586,7 +578,8 @@ export class Controller {
         }
 
         // オプションの処理
-        for (const opt of option) {
+        const optionList = MyFuncs.parseSendRoleOption(data.send_role_option);
+        for (const opt of optionList) {
             if (opt.action == "canknow") {
                 // △△に◆◆の役職を伝えるオプション
                 for (const mem of memberRoleList.filter(mem => mem.role == opt.targetRole)) {
@@ -626,16 +619,15 @@ export class Controller {
             return MyFuncs.createErrorReply(status);
         }
 
-        if (!data.prevSendRoleCommandString) {
+        if (!data.prev_send_role_command_string) {
             return MyFuncs.createErrorReply(eMessage.C05_NotStartJinro);
         }
 
-        // isSenderRoleChecked(=GMかどうか) は 両方受けれるように false にしておく。
-        // GMがいた場合でも、役職コマンドにGMがいなければ、後続処理で投票には出てこないので良しとする。
-        const memberList = MyFuncs.getSplaJinroMemberList(data, ch, sender, false/* isSenderRoleChecked */);
+        // GMをメンバーとみなすか、みなさないか問題は、send_role コマンドにGMがいたかどうかで判断する
+        const memberList = MyFuncs.getSplaJinroMemberList(data, ch, sender, false/* ignoreGm */);
 
         // 前回のメンバー通知コマンドをパース
-        let { memberRoleList, option } = new plainTextCommandParser(data.prevSendRoleCommandString)
+        let memberRoleList = CommandParser.fromPlaneText(data.prev_send_role_command_string)
             .parseMemberRoleSetting(memberList);
 
         if (memberRoleList.length == 0) {
@@ -684,7 +676,7 @@ export class Controller {
      * @param user 
      * @returns 
      */
-    ejectMemberForVote = async (isDM: boolean, channelId: string, ch: Channel, sender: MyUser, cmd: plainTextCommandParser, inputMenbers: MyUser[]): Promise<MyResult> => {
+    ejectMemberForVote = async (isDM: boolean, channelId: string, ch: Channel, sender: MyUser, cmd: CommandParser, inputMenbers: MyUser[]): Promise<MyResult> => {
         if (isDM) {
             // メンバーを指定するのでサーバーのチャンネルからどうぞ
             return MyFuncs.createErrorReply(eMessage.C06_NotAllowFromDM);
@@ -695,7 +687,7 @@ export class Controller {
             return MyFuncs.createErrorReply(status);
         }
 
-        if (!data.prevSendRoleCommandString) {
+        if (!data.prev_send_role_command_string) {
             return MyFuncs.createErrorReply(eMessage.C05_NotStartJinro);
         }
 
@@ -704,14 +696,14 @@ export class Controller {
 
         // 処理前に入力メンバーの メンバー名の空白を _ アンスコ に置換しておく
         for (let i = 0; i < inputMenbers.length; i++) {
-            inputMenbers[i].name = inputMenbers[i].name.replace(/[ 　]+/, "_");
+            inputMenbers[i].name = inputMenbers[i].name.replace(SPACE_REGXg, "_");
         }
 
         // ---参照モード
         if (cmd.existsOption(eCommandOptions.show) || inputMenbers.length == 0) {
             // 直近の役職リストから現在のゲームのメンバーを取得
             const memberList = MyFuncs.getSplaJinroMemberList(data, ch, sender, false/* 役職リストでGMを含んでいるかそうでないか分かるのでここでは除かない */);
-            const { memberRoleList, option } = new plainTextCommandParser(data.prevSendRoleCommandString).parseMemberRoleSetting(memberList);
+            const memberRoleList = CommandParser.fromPlaneText(data.prev_send_role_command_string).parseMemberRoleSetting(memberList);
 
             let alived = memberRoleList
                 .filter(m => !ejectList.some(em => em.id == m.id))
@@ -753,7 +745,7 @@ export class Controller {
             }
 
             // 参照モードを利用して最終的なメンバーのメッセージを取得し、返信
-            const showCmd = new plainTextCommandParser(`${eCommands.EjectFromVote} ${eCommandOptions.show}`);
+            const showCmd = CommandParser.fromPlaneText(`${eCommands.EjectFromVote} ${eCommandOptions.show}`);
             return await this.ejectMemberForVote(isDM, channelId, ch, sender, showCmd, []);
         }
 
@@ -768,12 +760,40 @@ export class Controller {
             }
 
             // 参照モードを利用して最終的なメンバーのメッセージを取得し、返信
-            const showCmd = new plainTextCommandParser(`${eCommands.EjectFromVote} ${eCommandOptions.show}`);
+            const showCmd = CommandParser.fromPlaneText(`${eCommands.EjectFromVote} ${eCommandOptions.show}`);
             return await this.ejectMemberForVote(isDM, channelId, ch, sender, showCmd, []);
         }
 
         // ここには来ないはず（コマンドミス以外では）
         return MyFuncs.createSuccessReply(`${cmd.command} のコマンド指定が間違っているようどす。`);
+    }
+
+    updateSendRoleOption = async (isDM: boolean, channelId: string, cmd: CommandParser): Promise<MyResult> => {
+        if (isDM) {
+            return MyFuncs.createErrorReply(eMessage.C00_NotAllowFromDM,);
+        }
+
+        // asyncSelectSplaJinroDataForce を呼ぶことで、データが未登録の場合でも自動的にInsertされる
+        const { status, value: data } = await this.connectedDB.asyncSelectSplaJinroDataForce(channelId);
+        if (status != ResultOK) {
+            return MyFuncs.createErrorReply(status);
+        }
+
+        // オプション更新
+        await this.connectedDB.asyncUpdateSplaJinroData(channelId, {
+            'send_role_option': cmd.orgString,
+        })
+
+        // どのオプションが有効か表示
+        let msg = "";
+        const optionList = MyFuncs.parseSendRoleOption(cmd.orgString);
+        for (const opt of optionList) {
+            if (opt.action == "canknow") {
+                msg += Utils.format(eMessage.C03_inner_0_know_to_1, opt.targetRole, opt.complement) + "\n";
+            }
+        }
+
+        return MyFuncs.createSuccessReply(eMessage.C07_EnabledOptions, msg);
     }
 
     /**
@@ -790,19 +810,19 @@ export class Controller {
 
         const { status, value: data } = await this.connectedDB.asyncSelectSplaJinroDataForce(channelId,);
         if (!data) {
-            return MyFuncs.createErrorReply(eMessage.C07_DataNothing,);
+            return MyFuncs.createErrorReply(eMessage.C08_DataNothing,);
         }
 
         const delSuccess = await this.connectedDB.asyncDeleteSplaJinroData(channelId);
         if (!delSuccess) {
-            return MyFuncs.createErrorReply(eMessage.C07_DBError,);
+            return MyFuncs.createErrorReply(eMessage.C08_DBError,);
         }
 
-        return MyFuncs.createSuccessReply(eMessage.C07_ClearMemberData,);
+        return MyFuncs.createSuccessReply(eMessage.C08_ClearMemberData,);
     }
 
 
-    buildTeam = async (isDM: boolean, channelId: string, ch: Channel, sender: MyUser): Promise<MyResult> => {
+    buildTeam = async (isDM: boolean, channelId: string, ch: Channel, sender: MyUser, cmd: CommandParser): Promise<MyResult> => {
         if (isDM) {
             // でもOK
             console.log("dmで受信");
@@ -819,7 +839,7 @@ export class Controller {
         }
 
         if (memberList.length == 0) {
-            return MyFuncs.createErrorReply(eMessage.C07_MemberNotFound);
+            return MyFuncs.createErrorReply(eMessage.C09_MemberNotFound);
         }
 
         let teamA: string[] = [];
@@ -840,7 +860,10 @@ export class Controller {
             return mem;
         };
 
-        const max = Math.min(4, Math.ceil(memberList.length / 2));
+        const limitCountStr = cmd.getValue(0, 1);
+        const limitCount = parseInt(limitCountStr ? limitCountStr : "4");
+
+        const max = Math.min(limitCount, Math.ceil(memberList.length / 2));
         let mem = picMember();
         while (mem && teamA.length < max) {
             teamA.push(mem.name);
@@ -958,11 +981,11 @@ class MyFuncs {
      * 参加者取得
      * @param data 
      * @param ch 
-     * @param sender コマンド送信者
-     * @param senderIsGM 送信者がロールの内容を確認したかどうか(=GMかどうか)
+     * @param gm
+     * @param ignoreGm
      * @returns 
      */
-    static getSplaJinroMemberList(data: SplaJinroData, ch: Channel, sender: MyUser, senderIsGM: boolean): MyUser[] {
+    static getSplaJinroMemberList(data: SplaJinroData, ch: Channel, gm: MyUser, ignoreGm: boolean): MyUser[] {
         let members: MyUser[] = [];
         if (ch.isVoiceBased()) {
             ch.members.forEach(m => members.push({ id: m.id, name: m.displayName }));
@@ -973,9 +996,39 @@ class MyFuncs {
             members = members.filter(m => m.id != igm.id);
         });
         // コマンド送信者がロールを確認している場合は、GMとみなすため、参加者からは省く
-        if (senderIsGM) {
-            members = members.filter(m => m.id != sender.id);
+        if (ignoreGm) {
+            members = members.filter(m => m.id != gm.id);
         }
         return members;
     }
+
+    /**
+     * sendRole オプション文字列パース
+     */
+    static parseSendRoleOption(optionStr: string): SendMemberRoleOption[] {
+        let sendRoleOptionList: SendMemberRoleOption[] = [];
+
+        // オプションか判定
+        const optionStrList = optionStr.replace(SPACE_REGXg, "\n").split("\n");
+        for (const optStr of optionStrList) {
+            // 知られるオプションか判定
+            {
+                const sepalate = Utils.format(eMessage.C03_inner_0_know_to_1, "", "");
+                const optArray = optStr.split(sepalate);
+                if (optArray.length == 2) {
+                    sendRoleOptionList.push({
+                        targetRole: optArray[0],
+                        action: "canknow",
+                        complement: optArray[1],
+                    });
+                    continue;
+                }
+            }
+
+            // …ほか追加あれば
+        }
+
+        return sendRoleOptionList;
+    }
+
 }

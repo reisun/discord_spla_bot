@@ -4,6 +4,8 @@ export const ALPHABET_TABLE = [
 
 export const MAX_MEMBER_COUNT: number = 14;
 
+export const SPACE_REGXg = /[ 　]+/g;
+
 export const eMessage = {
     // 汎用
     C00_DBError: "DBエラーです（冷たい業務連絡）",
@@ -11,6 +13,7 @@ export const eMessage = {
     C00_DataVersionNotSame: "保存中のデータ構成が古いためデータがクリアされました。\n最初から操作しなおしてください。",
     C00_ReplyDMFailed: "DMでの返信に失敗しました。DMは許可されていますか？",
     C00_OtherDMFailed: "以下のユーザーへのDMに失敗しました。DMが許可されていないかもしれません。\n{0}",
+    C00_NotAllowFromDM: "サーバーのチャンネルからコマンドを実行してください。",
     C00_VoteOneOnOne: "(1人1票)",
     C00_VoteAny: "(1人複数票OK)",
 
@@ -28,9 +31,9 @@ export const eMessage = {
     C03_NonAgainData: "前回の役職作成データがありませんでした。",
     C03_MemberFew: "村人以外の役職({0}個)に対してメンバーが足りません。({1}人)",
     C03_SuggestMemberExplain: "ロール割り当てコマンドを作りました。\n以下のメッセージをコピーしてBOTに送信してください。\n（必要なら修正して送信でＯＫ）",
-    C03_SuggestMember: "/{0}\n{1}\n{2}\n{3}", // コマンド、チェンネルID、メンバ役割表、オプション
+    C03_SuggestMember: "/{0}\n{1}\n{2}", // コマンド、チェンネルID、メンバ役割表
     C03_inner_MemberFormat: "{0}　{1}　{2}", // ゲーム内名前、役職、メンバー名
-    C03_inner_1_know_to_0: "{0}>知られる>{1}",
+    C03_inner_0_know_to_1: "{0}>知れる>{1}",
     // roleSend
     C04_NeedDM: "DMで送らないと視えちゃうのでだめや",
     C04_MemberNothing: "メンバーがいない？😨",
@@ -54,11 +57,13 @@ export const eMessage = {
     C06_RoleDataNothingInData: "メンバーにDM送信時にメンバーが０人だったようです。（そんなことある？）ロール作成からやり直して見てください。",
     C06_MemberView: "現在追放されているメンバーは以下の通りです。\n{0}",
     C06_inner_MemberFormat: "* {0}", // markdown のリスト表記を使う
+    // sendRoleOption
+    C07_EnabledOptions: "以下の役職通知時オプションが有効になりました。\n{0}",
     // clear memberData
-    C07_ClearMemberData: "登録されたメンバーデータがクリアされました。",
-    C07_DataNothing: "既にデータはクリアされています。",
-    C07_DBError: "予期せぬエラーでメンバーデータがクリアできませんでした。悔しい…", 
+    C08_ClearMemberData: "登録されたメンバーデータがクリアされました。",
+    C08_DataNothing: "既にデータはクリアされています。",
+    C08_DBError: "予期せぬエラーでメンバーデータがクリアできませんでした。悔しい…", 
     // teambuilder
-    C07_MemberNotFound: "メンバーがいない？😨",
+    C09_MemberNotFound: "メンバーがいない？😨",
 } as const;
 export type eMessage = (typeof eMessage)[keyof typeof eMessage];

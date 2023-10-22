@@ -12,9 +12,10 @@ export class DBUtils {
       channel_id: channelId,
       add_member_list: [],
       ignore_member_list: [],
-        prevSuggestRoleCommandString: "",
-      prevSendRoleCommandString: "",
+      prev_suggest_role_command_string: "",
+      prev_send_role_command_string: "",
       eject_member_list: [],
+      send_role_option: "狂人>知れる>人狼",
       last_update_datatime: new Date(),
       version: SplaJinroDataVersion,
     };

@@ -38,12 +38,13 @@ export class DiscordUtils {
     }
 
     static createDiscordAlphabetEmoji(alp: string): string {
+        // 数字⇒byte配列
         const uint32ToArrayBuffer = (n: number) => {
             const view = new DataView(new ArrayBuffer(4));
             view.setUint32(0, n);
             return view.buffer;
         }
-
+        // byte配列⇒数字
         const arrayBufferToUint32 = (u8Array: Uint8Array) => {
             let u8Array4 = new Uint8Array(4);
             for (let i = 1; i <= u8Array.length; i++) {
@@ -55,6 +56,7 @@ export class DiscordUtils {
         const text_encoder = new TextEncoder();
         const text_decoder = new TextDecoder("utf-8");
 
+        // discord絵文字とほぼ同じ仕様のtwemojiより、"[A]"の絵文字の文字コードを定義。⇒ twemoji"[A]"を数値化
         const twemojiA = [0xf0, 0x9f, 0x87, 0xa6];
         const twemojiANum = arrayBufferToUint32(Uint8Array.from(twemojiA));
 

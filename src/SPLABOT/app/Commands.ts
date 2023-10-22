@@ -7,8 +7,7 @@ import {
 } from "discord.js";
 import "./DiscordExtentions";
 import { Utils } from "./Utilis";
-import { eMessage } from "./Const";
-import { SendMemberRoleOption, MemberRoleInfo, User as MyUser } from "./Model";
+import { MemberRoleInfo, User as MyUser } from "./Model";
 
 // スラッシュコマンドは日本語に非対応……、不都合なことが多すぎないか…あっぁぁん？
 // export const eCommands = {
@@ -28,6 +27,7 @@ export const eCommands = {
     SendRole: "spj_send_role",
     CreateVote: "spj_vote",
     EjectFromVote: "spj_eject",
+    SendRoleOption: "spj_send_role_option",
     ClearMemberData: "spj_clear",
     TeamBuilder: "spj_team_build",
 } as const;
@@ -168,97 +168,21 @@ export const COMMAND_JSONBODYS: RESTPostAPIChatInputApplicationCommandsJSONBody[
     new SlashCommandBuilder()
         .setName(eCommands.TeamBuilder)
         .setDescription("メンバーで、Aチーム、Bチーム、観戦ほか、にチーム分けします。")
+        .addIntegerOption(opt => opt
+            .setName("count")
+            .setDescription("１チームの最大人数を設定します。何も指定しなければ 4 として扱います。")
+            .setRequired(false)
+        )
         .toJSON(),
 ];
 
 /**
- * インタラクションのコマンドパーサー
+ * コマンドパーサ
  */
-export class InteractionCommandParser {
-    /**
-     * スラッシュコマンドのインタラクションから平文のコマンドへ変換する
-     * @param client 
-     * @param interaction 
-     * @returns 
-     */
-    static asyncCconvertPlaneTextCommand = async (client: Client, interaction: Interaction): Promise<{
-        plainTextCommand: string,
-        mentionUsers: MyUser[]
-    }> => {
-        let plainTextCommand = "";
-        let mentionUsers: MyUser[] = [];
-
-        if (!interaction.isCommand()) {
-            return { plainTextCommand: plainTextCommand, mentionUsers: mentionUsers };
-        }
-
-        if (!isMyCommand(interaction.commandName)) {
-            return { plainTextCommand: plainTextCommand, mentionUsers: mentionUsers };
-        }
-
-        plainTextCommand = "/" + interaction.commandName;
-        for (const opt of interaction.options.data) {
-            if (interaction.commandName == eCommands.Member){
-                if (opt.type == ApplicationCommandOptionType.String && opt.name == "option"){
-                    plainTextCommand += " " + opt.value;
-                }
-                else if (opt.type == ApplicationCommandOptionType.User) {
-                    const userid = <string>opt.value;
-                    const user = (await client.users.fetch(userid));
-                    mentionUsers.push({ id: userid, name: user.displayName });
-                }
-            }
-            if (opt.type == ApplicationCommandOptionType.Subcommand && opt.name == "again") {
-                // 引数無し
-            }
-            if (opt.type == ApplicationCommandOptionType.Subcommand && opt.name == "create") {
-                if (!opt.options) {
-                    continue;
-                }
-                for (const subopt of opt.options) {
-                    if (subopt.type == ApplicationCommandOptionType.String && subopt.name == "name") {
-                        plainTextCommand += " " + subopt.value;
-                    }
-                    if (subopt.type == ApplicationCommandOptionType.String && subopt.name.match(/^role/)) {
-                        plainTextCommand += " " + subopt.value;
-                    }
-                }
-            }
-            if (opt.type == ApplicationCommandOptionType.Subcommand && opt.name == eCommandOptions.nocheck) {
-                plainTextCommand += " " + opt.name;
-                if (!opt.options) {
-                    continue;
-                }
-                for (const subopt of opt.options) {
-                    if (subopt.type == ApplicationCommandOptionType.String && subopt.name == "name") {
-                        plainTextCommand += " " + subopt.value;
-                    }
-                    if (subopt.type == ApplicationCommandOptionType.String && subopt.name.match(/^role/)) {
-                        plainTextCommand += " " + subopt.value;
-                    }
-                }
-            }
-            if (interaction.commandName == eCommands.EjectFromVote){
-                if (opt.type == ApplicationCommandOptionType.String && opt.name == "option"){
-                    plainTextCommand += " " + opt.value;
-                }
-                else if (opt.type == ApplicationCommandOptionType.User) {
-                    const userid = <string>opt.value;
-                    const user = (await client.users.fetch(userid));
-                    mentionUsers.push({ id: userid, name: user.displayName });
-                }
-            }
-        }
-        return { plainTextCommand: plainTextCommand, mentionUsers: mentionUsers };
-    }
-}
-/**
- * 平文のコマンドパーサ
- */
-export class plainTextCommandParser {
+export class CommandParser {
     private _value: string[][];
     private _options: string[];
-    constructor(public orgString: string) {
+    private constructor(public orgString: string) {
         this._value = orgString.split("\n").map(elm =>
             // 半角 or 全角 のスペースがパラメータの区切りとする
             elm.split(/[ 　]+/)
@@ -268,11 +192,120 @@ export class plainTextCommandParser {
         // オプションがある場合は、オプションと値を分離する
         if (SUPPORT_OPTION_LIST.some(v => v.command == this.command)) {
             const opts = SUPPORT_OPTION_LIST.filter(v => v.command == this.command)[0].opts;
-            const ret = plainTextCommandParser.separatOptionsAndValues(this._value, opts);
+            const ret = CommandParser.separatOptionsAndValues(this._value, opts);
             this._options = ret.options;
             this._value = ret.values;
         }
     }
+
+    /**
+     * 平文のコマンドをパース
+     * @param command 
+     * @returns 
+     */
+    static fromPlaneText = (command: string): CommandParser => {
+        return new CommandParser(command);
+    }
+
+    /**
+     * インタラクションのコマンド（=スラッシュコマンド）をパース
+     * @param client 
+     * @param interaction 
+     * @returns 
+     */
+    static asyncFromInteraction = async (client: Client, interaction: Interaction): Promise<{
+        parsedCommand: CommandParser,
+        mentionUsers: MyUser[]
+    }> => {
+        let plainTextCommand = "";
+        let mentionUsers: MyUser[] = [];
+
+        if (!interaction.isCommand()) {
+            return { parsedCommand: new CommandParser(""), mentionUsers: mentionUsers };
+        }
+
+        if (!isMyCommand(interaction.commandName)) {
+            return { parsedCommand: new CommandParser(""), mentionUsers: mentionUsers };
+        }
+
+        plainTextCommand = "/" + interaction.commandName;
+        for (const opt of interaction.options.data) {
+            switch (interaction.commandName) {
+                case eCommands.Member: {
+                    if (opt.type == ApplicationCommandOptionType.String && opt.name == "option") {
+                        plainTextCommand += " " + opt.value;
+                    }
+                    else if (opt.type == ApplicationCommandOptionType.User) {
+                        const userid = <string>opt.value;
+                        const user = (await client.users.fetch(userid));
+                        mentionUsers.push({ id: userid, name: user.displayName });
+                    }
+                }
+                    break;
+                case eCommands.SuggestRole: {
+                    if (opt.type == ApplicationCommandOptionType.Subcommand && opt.name == "again") {
+                        // 引数無し
+                    }
+                    if (opt.type == ApplicationCommandOptionType.Subcommand && opt.name == "create") {
+                        if (!opt.options) {
+                            continue;
+                        }
+                        for (const subopt of opt.options) {
+                            if (subopt.type == ApplicationCommandOptionType.String && subopt.name == "name") {
+                                plainTextCommand += " " + subopt.value;
+                            }
+                            if (subopt.type == ApplicationCommandOptionType.String && subopt.name.match(/^role/)) {
+                                plainTextCommand += " " + subopt.value;
+                            }
+                        }
+                    }
+                }
+                    break;
+                case eCommands.SendRole: {
+                    if (opt.type == ApplicationCommandOptionType.Subcommand && opt.name == eCommandOptions.nocheck) {
+                        plainTextCommand += " " + opt.name;
+                        if (!opt.options) {
+                            continue;
+                        }
+                        for (const subopt of opt.options) {
+                            if (subopt.type == ApplicationCommandOptionType.String && subopt.name == "name") {
+                                plainTextCommand += " " + subopt.value;
+                            }
+                            if (subopt.type == ApplicationCommandOptionType.String && subopt.name.match(/^role/)) {
+                                plainTextCommand += " " + subopt.value;
+                            }
+                        }
+                    }
+                }
+                    break;
+                case eCommands.EjectFromVote: {
+                    if (opt.type == ApplicationCommandOptionType.String && opt.name == "option") {
+                        plainTextCommand += " " + opt.value;
+                    }
+                    else if (opt.type == ApplicationCommandOptionType.User) {
+                        const userid = <string>opt.value;
+                        const user = (await client.users.fetch(userid));
+                        mentionUsers.push({ id: userid, name: user.displayName });
+                    }
+                }
+                    break;
+                case eCommands.SendRoleOption: {
+                    if (opt.type == ApplicationCommandOptionType.String && opt.name == "option") {
+                        plainTextCommand += " " + opt.value;
+                    }
+                }
+                    break;
+                case eCommands.TeamBuilder: {
+                    if (opt.type == ApplicationCommandOptionType.Integer && opt.name == "count") {
+                        plainTextCommand += " " + opt.value;
+                    }
+                }
+                    break;
+            }
+        }
+        return { parsedCommand: new CommandParser(plainTextCommand), mentionUsers: mentionUsers };
+    }
+
     get command(): eCommands | null {
         const v = this.getValue(0, 0)?.replace(/^\//, "");
         return isMyCommand(v) ? v : null;
@@ -302,31 +335,13 @@ export class plainTextCommandParser {
         return this._value.length;
     }
 
-    parseMemberRoleSetting = (memberList: MyUser[]): { memberRoleList: MemberRoleInfo[], option: SendMemberRoleOption[] } => {
+    parseMemberRoleSetting = (memberList: MyUser[]): MemberRoleInfo[] => {
         const cmd = this;
 
-        // メンバー、オプション情報
+        // メンバー情報
         let memberRoleInfoList: MemberRoleInfo[] = [];
-        let sendRoleOptionList: SendMemberRoleOption[] = [];
-
         for (let i = 1; i < cmd.getLineNum(); i++) {
-            const firstValue = <string>cmd.getValue(i, 0);
-
-            // オプションか判定
-            {
-                const sepalate = Utils.format(eMessage.C03_inner_1_know_to_0, "", "");
-                const optArray = firstValue.split(sepalate);
-                if (optArray.length == 2) {
-                    sendRoleOptionList.push({
-                        targetRole: optArray[1],
-                        action: "canknow",
-                        complement: optArray[0],
-                    });
-                    continue;
-                }
-            }
-
-            // オプションでないならメンバー情報かも
+            // メンバー情報は３つの要素
             if (cmd.getLength(i) != 3)
                 continue;
 
@@ -346,7 +361,7 @@ export class plainTextCommandParser {
             });
         }
 
-        return { memberRoleList: memberRoleInfoList, option: sendRoleOptionList };
+        return memberRoleInfoList;
     }
 
     private static separatOptionsAndValues(
