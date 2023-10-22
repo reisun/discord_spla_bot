@@ -6,6 +6,8 @@ export const MAX_MEMBER_COUNT: number = 14;
 
 export const SPACE_REGXg = /[ 　]+/g;
 
+export const TEAMBUILD_DEFAULT_NUM = 4;
+
 export const eMessage = {
     // 汎用
     C00_DBError: "DBエラーです（冷たい業務連絡）",
@@ -19,8 +21,7 @@ export const eMessage = {
 
     // updateMember
     C02_NotAllowFromDM: "メンバー編集はチャンネルから実行してください。（サーバー外のユーザーを登録してBOTがDMとか気まずそうなので…）",
-    C02_MemberView_Zero: "現在メンバーはいません。",
-    C02_MemberView: "現在登録されているメンバーは以下の通りです。\n{0}",
+    C02_MemberView: "現在の人狼参加者は以下の通りです。",
     C02_inner_MemberFormat: "* {0}", // markdown のリスト表記を使う
     C02_DBError: "予期せぬエラーでメンバーを更新できませんでした…。悔しい…。",
     // roleSuggest

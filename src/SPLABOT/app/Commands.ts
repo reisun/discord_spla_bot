@@ -8,6 +8,7 @@ import {
 import "./DiscordExtentions";
 import { Utils } from "./Utilis";
 import { MemberRoleInfo, User as MyUser } from "./Model";
+import { TEAMBUILD_DEFAULT_NUM } from "./Const";
 
 // スラッシュコマンドは日本語に非対応……、不都合なことが多すぎないか…あっぁぁん？
 // export const eCommands = {
@@ -170,7 +171,7 @@ export const COMMAND_JSONBODYS: RESTPostAPIChatInputApplicationCommandsJSONBody[
         .setDescription("メンバーで、Aチーム、Bチーム、観戦ほか、にチーム分けします。")
         .addIntegerOption(opt => opt
             .setName("count")
-            .setDescription("１チームの最大人数を設定します。何も指定しなければ 4 として扱います。")
+            .setDescription(`１チームの最大人数を設定します。指定無しなら ${TEAMBUILD_DEFAULT_NUM}人 で分けます。`)
             .setRequired(false)
         )
         .toJSON(),

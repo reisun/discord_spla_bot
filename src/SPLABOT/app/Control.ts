@@ -1,6 +1,6 @@
 import { Client, Channel, User, Message, Interaction, TextBasedChannel, EmbedBuilder, Colors, MessageReaction, PartialMessageReaction, PartialUser, APIEmbed, } from 'discord.js';
 import env from "../inc/env.json";
-import { MAX_MEMBER_COUNT, ALPHABET_TABLE, eMessage, SPACE_REGXg } from "./Const";
+import { MAX_MEMBER_COUNT, ALPHABET_TABLE, eMessage, SPACE_REGXg, TEAMBUILD_DEFAULT_NUM } from "./Const";
 import { User as MyUser, SendMemberRoleOption, SplaJinroData } from "./Model";
 import { eCommandOptions, eCommands, isMyCommand, CommandParser } from "./Commands"
 import { Utils } from "./Utilis";
@@ -24,12 +24,9 @@ import { ResultOK } from './Result';
 //      ⇒ これだったっぽい
 //      ⇒ 反映済み
 
-// TODO 刷新したREADMEの内容に合わせて改修
-//  /spj_member （人狼参加者と、ボイスチャンネルに居るが参加者でない人、を表示）
-
 // TODO 投票で 中のメッセージを修正したりすると面白いか？
 // TODO メッセージは組み込みにしたい。本文説明（or 導入メッセージ）<改行> 組み込みメッセージ みたいなフォーマットで。
-// TODO 組み込みメッセージで複数をなるべく一つにしたいし、エラーメッセージには色を付けたりした。
+// TODO 組み込みメッセージで複数をなるべく一つにしたいし、エラーメッセージには色を付けたりしたい。
 // TODO 普通の人狼でも使えるようにしたい
 // TODO 名前付きはあくまでも オプションにしたい。
 //      ⇒ hide_name オプション common_name role1 role2…
@@ -280,15 +277,62 @@ export class Controller {
 
         // ---参照モード
         if (cmd.existsOption(eCommandOptions.show) || inputMenbers.length == 0) {
-            if (memberList.length == 0) {
-                // 参照したがメンバー０人。メッセージを追加して返却
-                return MyFuncs.createSuccessReply(eMessage.C02_MemberView_Zero,);
+            // 人狼参加者と、ボイスチャンネルに居るが参加者でない人、を表示
+            let embeds: APIEmbed[] = [];
+
+            const memberMsg = memberList
+                .map(mem =>
+                    Utils.format(eMessage.C06_inner_MemberFormat, `${mem.name}`)
+                ).join("\n");
+
+            // 人狼さん参加者を埋め込みメッセージでチームを表示
+            const embedJoin = new EmbedBuilder()
+                .setColor(Colors.Blue)
+                .setTitle('人狼参加者！')
+                .setDescription(memberMsg == "" ? "--参加者０人--" : memberMsg)
+                .toJSON();
+
+            embeds.push(embedJoin);
+
+            if (ch.isVoiceBased()) {
+                const chMemberLsit = ch.members.map(chmem => { return { id: chmem.id, name: chmem.displayName }; });
+                {
+                    const ignoreMemberMsg = chMemberLsit
+                        .filter(chmem => !memberList.some(mem => mem.id == chmem.id))
+                        .map(chmem =>
+                            Utils.format(eMessage.C02_inner_MemberFormat, chmem.name)
+                        ).join("\n");
+
+                    const embedIgnore = new EmbedBuilder()
+                        .setColor(Colors.Grey)
+                        .setTitle('チャンネル内の不参加者')
+                        .setDescription(ignoreMemberMsg == "" ? "--いません♪--" : ignoreMemberMsg)
+                        .toJSON();
+                    embeds.push(embedIgnore);
+                }
+
+                {
+                    const addMemberMsg = memberList
+                        .filter(chmem => !chMemberLsit.some(mem => mem.id == chmem.id))
+                        .map(chmem =>
+                            Utils.format(eMessage.C02_inner_MemberFormat, chmem.name)
+                        ).join("\n");
+
+                    if (addMemberMsg) {
+                        const embedAdd = new EmbedBuilder()
+                            .setColor(Colors.Red)
+                            .setTitle('チャンネル外の参加者')
+                            .setDescription(addMemberMsg)
+                            .toJSON();
+                        embeds.push(embedAdd);
+                    }
+                }
             }
-            // 現在のメンバーを返却
-            let msg = memberList.map(mem =>
-                Utils.format(eMessage.C02_inner_MemberFormat, mem.name)
-            ).join("\n");
-            return MyFuncs.createSuccessReply(eMessage.C02_MemberView, msg);
+
+            return MyFuncs.createSuccessReply({
+                content: eMessage.C02_MemberView,
+                embeds: embeds,
+            });
         }
 
         // ---追加・削除モード
@@ -861,7 +905,7 @@ export class Controller {
         };
 
         const limitCountStr = cmd.getValue(0, 1);
-        const limitCount = parseInt(limitCountStr ? limitCountStr : "4");
+        const limitCount = limitCountStr ? parseInt(limitCountStr) : TEAMBUILD_DEFAULT_NUM;
 
         const max = Math.min(limitCount, Math.ceil(memberList.length / 2));
         let mem = picMember();

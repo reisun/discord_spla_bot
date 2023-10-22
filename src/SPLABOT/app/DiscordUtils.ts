@@ -75,7 +75,7 @@ export class DiscordUtils {
             return `${user} ${sendMessage}`;
         }
         else {
-            sendMessage.content += `${user} ${sendMessage.content}`;
+            sendMessage.content = `${user} ${sendMessage.content}`;
             return sendMessage;
         }
     }
