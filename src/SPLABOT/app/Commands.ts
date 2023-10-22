@@ -81,14 +81,14 @@ export const COMMAND_JSONBODYS: RESTPostAPIChatInputApplicationCommandsJSONBody[
         .toJSON(),
     new SlashCommandBuilder()
         .setName(eCommands.SuggestRole)
-        .setDescription("名前・役職の割り振りを作成できます。")
+        .setDescription("名前・役職の割り振りリストを作成できます。")
         .addSubcommand(subcmd => subcmd
             .setName("again")
-            .setDescription("前回と同じ条件で割り振りを作成できます。\n（このコマンドめんどくさいもんね）")
+            .setDescription("前回と同じ条件で割り振りリストを作成できます。\n（このコマンドめんどくさいもんね）")
         )
         .addSubcommand(subcmd => subcmd
             .setName("create")
-            .setDescription("指定された内容で参加者に名前・役職を割り振ったリストを作成します。")
+            .setDescription("指定された内容で参加者に名前・役職を割り振りリストを作成します。")
             .addStringOption(opt => opt
                 .setName("name")
                 .setDescription("人狼の際のみんなに付ける共通の名前")
@@ -168,10 +168,10 @@ export const COMMAND_JSONBODYS: RESTPostAPIChatInputApplicationCommandsJSONBody[
     //     .toJSON(),
     new SlashCommandBuilder()
         .setName(eCommands.TeamBuilder)
-        .setDescription("メンバーで、Aチーム、Bチーム、観戦ほか、にチーム分けします。")
+        .setDescription("（スプラ人狼とは関係ない機能）メンバーを[Aチーム][Bチーム][観戦ほか]にチーム分けします。")
         .addIntegerOption(opt => opt
             .setName("count")
-            .setDescription(`１チームの最大人数を設定します。指定無しなら ${TEAMBUILD_DEFAULT_NUM}人 で分けます。`)
+            .setDescription(`１チームの最大人数。指定無しなら ${TEAMBUILD_DEFAULT_NUM}人。`)
             .setRequired(false)
         )
         .toJSON(),
