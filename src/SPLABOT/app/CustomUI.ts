@@ -87,90 +87,90 @@ export class DateRangeModal {
   }
 }
 
-/**
- * モーダルウインドウ：警告メッセージ
- */
-export class WarnningModal {
-  /**
-   * 
-   * @param interaction インタラクション必須（メッセージからのコマンド実行には対応できない）
-   * @returns 
-   */
-  static show = async (interaction: Interaction, message: string): Promise<void> => {
-    const customId = uuidv4();
-    const modal = new ModalBuilder()
-      .setCustomId(customId)
-      .setTitle("警告");
+// /**
+//  * モーダルウインドウ：警告メッセージ
+//  */
+// export class WarnningModal {
+//   /**
+//    * 
+//    * @param interaction インタラクション必須（メッセージからのコマンド実行には対応できない）
+//    * @returns 
+//    */
+//   static show = async (interaction: Interaction, message: string): Promise<void> => {
+//     const customId = uuidv4();
+//     const modal = new ModalBuilder()
+//       .setCustomId(customId)
+//       .setTitle("警告");
 
-    const infoText = new TextInputBuilder()
-      .setCustomId('info_text')
-      .setLabel('♢')
-      .setStyle(TextInputStyle.Paragraph)
-      .setValue(message)
-      .setRequired(false); // 入力を許可しないために非必須とします
+//     const infoText = new TextInputBuilder()
+//       .setCustomId('info_text')
+//       .setLabel('♢')
+//       .setStyle(TextInputStyle.Paragraph)
+//       .setValue(message)
+//       .setRequired(false); // 入力を許可しないために非必須とします
 
-    const actionRow = new ActionRowBuilder<TextInputBuilder>().addComponents(infoText);
+//     const actionRow = new ActionRowBuilder<TextInputBuilder>().addComponents(infoText);
 
-    modal.addComponents(actionRow);
+//     modal.addComponents(actionRow);
 
-    // モーダルを表示
-    if ("showModal" in interaction) {
-      await interaction.showModal(modal);
-    }
-  }
-}
+//     // モーダルを表示
+//     if ("showModal" in interaction) {
+//       await interaction.showModal(modal);
+//     }
+//   }
+// }
 
-/**
- * モーダルウインドウ：削除確認メッセージ
- */
-export class DeleteConfirmModal {
-  /**
-   * 
-   * @param interaction インタラクション必須（メッセージからのコマンド実行には対応できない）
-   * @returns 
-   */
-  static show = async (interaction: Interaction): Promise<boolean> => {
-    // モーダルウィンドウの構築
-    const customId = uuidv4();
-    const modal = new ModalBuilder()
-      .setCustomId(customId)
-      .setTitle('削除確認');
+// /**
+//  * モーダルウインドウ：削除確認メッセージ
+//  */
+// export class DeleteConfirmModal {
+//   /**
+//    * 
+//    * @param interaction インタラクション必須（メッセージからのコマンド実行には対応できない）
+//    * @returns 
+//    */
+//   static show = async (interaction: Interaction): Promise<boolean> => {
+//     // モーダルウィンドウの構築
+//     const customId = uuidv4();
+//     const modal = new ModalBuilder()
+//       .setCustomId(customId)
+//       .setTitle('削除確認');
 
-    const confirmationInput = new TextInputBuilder()
-      .setCustomId('delete_confirmation')
-      .setLabel(`削除するには "削除" と入力してください`)
-      .setStyle(TextInputStyle.Short)
-      .setRequired(true);
+//     const confirmationInput = new TextInputBuilder()
+//       .setCustomId('delete_confirmation')
+//       .setLabel(`削除するには "削除" と入力してください`)
+//       .setStyle(TextInputStyle.Short)
+//       .setRequired(true);
 
-    const actionRow = new ActionRowBuilder<TextInputBuilder>().addComponents(confirmationInput);
+//     const actionRow = new ActionRowBuilder<TextInputBuilder>().addComponents(confirmationInput);
 
-    modal.addComponents(actionRow);
+//     modal.addComponents(actionRow);
 
-    if (!("showModal" in interaction))
-      return false;
-    if (interaction.channel?.type !== ChannelType.GuildText) {
-      return false;
-    }
+//     if (!("showModal" in interaction))
+//       return false;
+//     if (interaction.channel?.type !== ChannelType.GuildText) {
+//       return false;
+//     }
 
-    // モーダルを表示
-    await interaction.showModal(modal);
+//     // モーダルを表示
+//     await interaction.showModal(modal);
 
-    const filter = (i: any) => i.customId === customId && i.user.id === interaction.user.id;
+//     const filter = (i: any) => i.customId === customId && i.user.id === interaction.user.id;
 
-    const result = await interaction
-      .awaitModalSubmit({
-        filter,
-        time: 15000, // 15秒間待機
-      })
-      .then((modalInteraction) => {
-        const userInput = modalInteraction.fields.getTextInputValue('delete_confirmation');
-        return userInput === '削除';
-      })
-      .catch(async (err) => {
-        await interaction.followUp({ content: '時間超過のため削除操作はキャンセルされました。', ephemeral: true });
-        return false;
-      });
+//     const result = await interaction
+//       .awaitModalSubmit({
+//         filter,
+//         time: 15000, // 15秒間待機
+//       })
+//       .then((modalInteraction) => {
+//         const userInput = modalInteraction.fields.getTextInputValue('delete_confirmation');
+//         return userInput === '削除';
+//       })
+//       .catch(async (err) => {
+//         await interaction.followUp({ content: '時間超過のため削除操作はキャンセルされました。', ephemeral: true });
+//         return false;
+//       });
 
-    return result;
-  }
-}
+//     return result;
+//   }
+// }

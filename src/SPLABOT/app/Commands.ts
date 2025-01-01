@@ -182,7 +182,7 @@ export const COMMAND_JSONBODYS: RESTPostAPIChatInputApplicationCommandsJSONBody[
             .setDescription("指定されたメッセージリンクのメッセージをコピーします。")
             .addChannelOption(opt => opt
                 .setName('channel')
-                .setDescription('コピー先のチャンネルを選択してください。')
+                .setDescription('コピー先のチャンネル名を入力してください。')
                 .setRequired(true))
             .addStringOption(opt => opt
                 .setName("message_link")
@@ -192,11 +192,31 @@ export const COMMAND_JSONBODYS: RESTPostAPIChatInputApplicationCommandsJSONBody[
         )
         .addSubcommand(subcmd => subcmd
             .setName(eCommandOptions.datetimeRange)
-            .setDescription("（スラッシュコマンド専用）コピー先のチャンネルを選択後、コピー対象とする日時範囲を指定するダイアログを表示します。")
+            .setDescription("指定された日時の範囲のメッセージをコピーします。")
             .addChannelOption(opt => opt
                 .setName('channel')
-                .setDescription('コピー先のチャンネルを選択してください。')
+                .setDescription('コピー先のチャンネル名を入力してください。')
                 .setRequired(true))
+            .addStringOption(opt => opt
+                .setName("from_ymd")
+                .setDescription("開始日を YYYY-MM-DD 形式で入力してください")
+                .setRequired(true)
+            )
+            .addStringOption(opt => opt
+                .setName("from_hm")
+                .setDescription("開始時刻を HH:MM 形式で入力してください")
+                .setRequired(true)
+            )
+            .addStringOption(opt => opt
+                .setName("to_ymd")
+                .setDescription("終了日を YYYY-MM-DD 形式で入力してください")
+                .setRequired(true)
+            )
+            .addStringOption(opt => opt
+                .setName("to_hm")
+                .setDescription("終了時刻を HH:MM 形式で入力してください")
+                .setRequired(true)
+            )
         )
         .toJSON(),
 

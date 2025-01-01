@@ -23,7 +23,11 @@ import { DiscordUtils, MessageContent } from "./DiscordUtils";
 import { DBAccesser, DBUtils } from "./db";
 import { ResultOK } from './Result';
 import { eContextMenuCommands, isMyContextMenuCommand } from './ContextMenuCommands';
-import { DateRangeModal, DeleteConfirmModal, WarnningModal } from './CustomUI';
+import {
+    DateRangeModal,
+    // DeleteConfirmModal, 
+    // WarnningModal,
+} from './CustomUI';
 
 // 操作者の確認、作業を飛ばすコマンドが欲しい？
 //       ⇒ むしろこちらをデフォルトにしたい…が、つまりそれはGMをBOTがやるということになり
@@ -120,7 +124,7 @@ export class Controller {
             }
             finally {
                 await interaction.deleteReply()
-                    .catch(console.error);
+                    .catch((err) => console.error("応答中メッセージ非表示エラー(すでに非表示の場合でも発生)"));
                 // await DiscordUtils.asyncReply(interaction.channel!, interaction.user, plainTextCommand)
                 //     .catch(console.error);
             }
@@ -1048,10 +1052,9 @@ export class Controller {
                 return MyFuncs.createErrorReply("無効なリンクです。正しいメッセージリンクを入力してください。",);
             }
             const [, guildId, channelId, messageId] = match;
-            // このチェックを入れるかどうか…
-            // if (ch.guildId != guildId) {
-            //     return MyFuncs.createErrorReply("同じサーバー内のチャンネル内でのみコピーできます。",);
-            // }
+            if (ch.guildId != guildId) {
+                return MyFuncs.createErrorReply("同じサーバー内のチャンネル間でのみコピーできます。",);
+            }
             let msg: Message<boolean>;
             try {
                 const channel = await client.channels.fetch(channelId);
@@ -1068,30 +1071,29 @@ export class Controller {
                 return MyFuncs.createErrorReply("DMチャンネルからは参照できません。",);
             }
 
+            // 添付ファイルの処理
+            const attachments = msg.attachments.map(attachment => attachment.url);
+
             // メッセージを再投稿するコマンドリストを作成
             return MyFuncs.createSuccessSendOtherChannel(targetChannel, {
                 embeds: [
                     {
                         author: {
-                            name: msg.author.username,
+                            name: msg.member?.displayName ?? msg.author.username,
                             icon_url: msg.author.displayAvatarURL(),
                         },
                         description: msg.content,
                         color: 0x00ff00, // 任意の色
-                        timestamp: new Date().toString(),
-                        footer: {
-                            text: `チャンネル: #${msg.channel.name} | メッセージID: ${msg.id}`,
-                            icon_url: msg.guild!.iconURL()!,
-                        },
+                        timestamp: new Date(msg.createdTimestamp).toISOString(),
                         fields: [
                             {
-                                name: 'メッセージへのリンク',
+                                name: '\u200B', // 空白文字
                                 value: `[クリックして移動](https://discord.com/channels/${msg.guild!.id}/${msg.channel.id}/${msg.id})`,
-                            },
+                            }
                         ],
+                        image: attachments.length > 0 ? { url: attachments[0] } : undefined, // 1つ目の添付ファイルを代表で画像として埋め込む
                     },
                 ],
-                files: msg.attachments.map(attachment => attachment.url), //添付ファイルも含める
                 flags: MessageFlags.SuppressNotifications, // 大変うるさそうなので非通知属性を付ける
             },);
         }
@@ -1107,12 +1109,17 @@ export class Controller {
             sendList: []
         }
 
-        const res = await DateRangeModal.show(interaction);
-        if (!res) {
-            return errorRes;
-        }
+        // const res = await DateRangeModal.show(interaction);
+        // if (!res) {
+        //     return errorRes;
+        // }
 
-        const [from_ymd, from_hm, to_ymd, to_hm] = res;
+        const [from_ymd, from_hm, to_ymd, to_hm] = [
+            cmd.getValue(0,2)!,
+            cmd.getValue(0,3)!,
+            cmd.getValue(0,4)!,
+            cmd.getValue(0,5)!,
+        ];
 
         const from = new Date(`${from_ymd}T${from_hm}:00+09:00`);
         const to = new Date(`${to_ymd}T${to_hm}:00+09:00`);
@@ -1137,18 +1144,36 @@ export class Controller {
         const to_t = to.getTime();
         const filteredMessages = messages.filter(message => {
             const messageTime = message.createdTimestamp;
-            return messageTime >= from_t && messageTime <= to_t;
+            return from_t <= messageTime && messageTime <= to_t;
         });
 
         // メッセージを再投稿するコマンドリストを作成
         const sendlist = filteredMessages.map(msg => {
+            // 添付ファイルの処理
+            const attachments = msg.attachments.map(attachment => attachment.url);
+            // メッセージを再投稿するコマンドリストを作成
             return MyFuncs.createSendOtherChannel(targetChannel, {
-                content: msg.content,
-                embeds: msg.embeds,
-                files: msg.attachments.map(attachment => attachment.url), //添付ファイルも含める
+                embeds: [
+                    {
+                        author: {
+                            name: msg.member?.displayName ?? msg.author.username,
+                            icon_url: msg.author.displayAvatarURL(),
+                        },
+                        description: msg.content,
+                        color: 0x00ff00, // 任意の色
+                        timestamp: new Date(msg.createdTimestamp).toISOString(),
+                        fields: [
+                            {
+                                name: '\u200B', // 空白文字
+                                value: `[クリックして移動](https://discord.com/channels/${msg.guild!.id}/${msg.channel.id}/${msg.id})`,
+                            }
+                        ],
+                        image: attachments.length > 0 ? { url: attachments[0] } : undefined, // 1つ目の添付ファイルを代表で画像として埋め込む
+                    },
+                ],
                 flags: MessageFlags.SuppressNotifications, // 大変うるさそうなので非通知属性を付ける
             },);
-        })
+        });
 
         return {
             status: MySuccess,

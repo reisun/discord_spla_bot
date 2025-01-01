@@ -47,14 +47,10 @@ const asyncRemoveCommand = async (servId: string) => {
         // 参加していないサーバー
         return;
     }
-    let commandList = await guild.commands.fetch();
-    if (commandList) {
-        for (const cmd of commandList.values()) {
-            if (cmd.applicationId == client.application!.id) {
-                await guild?.commands.delete(cmd.id);
-            }
-        }
-    }
+    await rest.put(
+        Routes.applicationGuildCommands(client.application!.id, servId),
+        { body: [] }, // 空配列を送信して登録コマンドをリセット
+    );
 }
 
 const asyncUpdateCommand = async (servId: string) => {
