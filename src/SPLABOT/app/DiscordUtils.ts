@@ -1,5 +1,5 @@
 ﻿import {
-    BaseMessageOptions,
+    MessageCreateOptions,
     Channel,
     ChannelType,
     Client,
@@ -10,7 +10,9 @@
     User
 } from "discord.js"
 
-export type MessageContent = string | BaseMessageOptions & { addAction?: (rp: Message<boolean>) => Promise<void>, };
+export type MessageContent =
+    string |
+    MessageCreateOptions & { addAction?: (rp: Message<boolean>) => Promise<void>, };
 
 /**
  * Discord周りのユーティリティ
@@ -70,8 +72,8 @@ export class DiscordUtils {
         return twemojiOut;
     }
 
-    private static addMemtion(user: User, sendMessage: MessageContent): MessageContent{
-        if (typeof sendMessage === "string"){
+    private static addMemtion(user: User, sendMessage: MessageContent): MessageContent {
+        if (typeof sendMessage === "string") {
             return `${user} ${sendMessage}`;
         }
         else {
@@ -88,11 +90,13 @@ export class DiscordUtils {
      * @returns 
      */
     static async asyncReply(ch: TextBasedChannel, user: User, sendMessage: MessageContent) {
-        const rp = await ch.send(DiscordUtils.addMemtion(user, sendMessage));
-        if (typeof sendMessage === "string")
-            return;
-        if (sendMessage.addAction)
-            await sendMessage.addAction(rp);
+        if ("send" in ch) {
+            const rp = await ch.send(DiscordUtils.addMemtion(user, sendMessage));
+            if (typeof sendMessage === "string")
+                return;
+            if (sendMessage.addAction)
+                await sendMessage.addAction(rp);
+        }
     }
     static async asyncDM(user: User, sendMessage: MessageContent) {
         const rp = await user.send(sendMessage);
@@ -109,11 +113,13 @@ export class DiscordUtils {
         if (sendMessage.addAction)
             await sendMessage.addAction(rp);
     }
-    static async asyncSendSameChannel(ch: TextBasedChannel, sendMessage: MessageContent) {
-        const rp = await ch.send(sendMessage);
-        if (typeof sendMessage === "string")
-            return;
-        if (sendMessage.addAction)
-            await sendMessage.addAction(rp);
+    static async asyncSendToChannel(ch: TextBasedChannel, sendMessage: MessageContent) {
+        if ("send" in ch) {
+            const rp = await ch.send(sendMessage);
+            if (typeof sendMessage === "string")
+                return;
+            if (sendMessage.addAction)
+                await sendMessage.addAction(rp);
+        }
     }
 }

@@ -4,8 +4,9 @@ import {
     // ↓ discord WebAPI
     REST, Routes,
 } from 'discord.js';
-import { Controller } from "./Control"
+import { Controller } from "./Control";
 import { COMMAND_JSONBODYS } from "./Commands";
+import { CONTEXTMENU_JSONBODYS } from "./ContextMenuCommands";
 
 console.log('import finished!');
 
@@ -37,7 +38,7 @@ const asyncAddCommand = async (servId: string) => {
     }
     await rest.put(
         Routes.applicationGuildCommands(client.application!.id, servId),
-        { body: COMMAND_JSONBODYS },
+        { body: (<any>COMMAND_JSONBODYS).concat((<any>CONTEXTMENU_JSONBODYS)) },
     );
 }
 const asyncRemoveCommand = async (servId: string) => {
@@ -98,7 +99,7 @@ client.on(Events.MessageCreate, async message => {
         return;
     }
     try {
-        await controller.processMessage(client, message);
+        await controller.processFromMessage(client, message);
     }
     catch (e) {
         console.log(e);
@@ -111,7 +112,12 @@ client.on(Events.InteractionCreate, async interaction => {
         return;
     }
     try {
-        await controller.processCommand(client, interaction);
+        if (!interaction.isModalSubmit()) {
+            await controller.processFromInteraction(client, interaction);
+        }
+        else {
+            //await controller.processFromModalSubmit(client, interaction);
+        }
     }
     catch (e) {
         console.log(e);
@@ -124,7 +130,7 @@ client.on(Events.MessageReactionAdd, async (reaction, user) => {
         return;
     }
     try {
-        await controller.processReaction(client, reaction, user);
+        await controller.processFromReaction(client, reaction, user);
     }
     catch (e) {
         console.log(e);

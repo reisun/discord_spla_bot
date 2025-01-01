@@ -1,4 +1,19 @@
-import { Client, Channel, User, Message, Interaction, TextBasedChannel, EmbedBuilder, Colors, MessageReaction, PartialMessageReaction, PartialUser, APIEmbed, } from 'discord.js';
+import {
+    Client,
+    Channel,
+    User,
+    Message,
+    Interaction,
+    TextBasedChannel,
+    EmbedBuilder,
+    Colors,
+    MessageReaction,
+    PartialMessageReaction,
+    PartialUser,
+    APIEmbed,
+    MessageFlags,
+    InteractionWebhook
+} from 'discord.js';
 import env from "../inc/env.json";
 import { MAX_MEMBER_COUNT, ALPHABET_TABLE, eMessage, SPACE_REGXg, TEAMBUILD_DEFAULT_NUM } from "./Const";
 import { User as MyUser, SendMemberRoleOption, SplaJinroData } from "./Model";
@@ -7,6 +22,8 @@ import { Utils } from "./Utilis";
 import { DiscordUtils, MessageContent } from "./DiscordUtils";
 import { DBAccesser, DBUtils } from "./db";
 import { ResultOK } from './Result';
+import { eContextMenuCommands, isMyContextMenuCommand } from './ContextMenuCommands';
+import { DateRangeModal, DeleteConfirmModal, WarnningModal } from './CustomUI';
 
 // 操作者の確認、作業を飛ばすコマンドが欲しい？
 //       ⇒ むしろこちらをデフォルトにしたい…が、つまりそれはGMをBOTがやるということになり
@@ -41,20 +58,22 @@ const eSendType = {
     sendReplyByDM: 2,
     sendDMByUserId: 3,
     sendSameChannel: 4,
+    sendOtherChannel: 5,
 } as const;
 type eSendType = (typeof eSendType)[keyof typeof eSendType];
 
-type SendParams = {
+type SendListItem = {
     type: eSendType,
     user: MyUser,
     sendMessage: MessageContent,
+    targetChannel?: TextBasedChannel,
 }
 
 const MySuccess = "success";
 const MyError = "error";
 type MyResult = {
     status: typeof MySuccess | typeof MyError,
-    sendList: SendParams[]
+    sendList: SendListItem[]
 }
 
 export class Controller {
@@ -74,44 +93,70 @@ export class Controller {
         console.log('bot MyDB connected!');
     }
 
-    processCommand = async (client: Client, interaction: Interaction) => {
-        if (!interaction.isCommand())
-            return;
-
+    /**
+     * インタラクションから来たコマンドの仕分け
+     * @param client 
+     * @param interaction 
+     * @returns 
+     */
+    processFromInteraction = async (client: Client, interaction: Interaction) => {
         // 自分の反応やBOTの反応は無視する
         if (!DiscordUtils.isUnresponsiveMessage(client, interaction.user, interaction.guild, env.allowed_serv, false))
             return;
-
-        if (!isMyCommand(interaction.commandName))
-            return;
-
-        // Discord API の仕様上 3秒以内に何らかのレスポンスを返す必要あり
-        // 考え中的なレスポンスを返す
-        await interaction.reply({ content: "*応答中…*", ephemeral: true })
-            .catch(console.error);
-
-        // --- コマンド解析
-
-        // 先に平文のコマンドでの動作を整備していたためそちらに合わせる。
-        // 平文のコマンドにコンバート
-        const { parsedCommand: cmd, mentionUsers } = await CommandParser.asyncFromInteraction(client, interaction);
-
-        let result: MyResult;
-        try {
-            result = await this.processPlaneTextCommand(cmd, interaction.user, interaction.channel!, mentionUsers);
-        }
-        finally {
-            await interaction.deleteReply()
+        if (interaction.isCommand() && isMyCommand(interaction.commandName)) {
+            // Discord API の仕様上 3秒以内に何らかのレスポンスを返す必要あり
+            // 考え中的なレスポンスを返す
+            await interaction.reply({ content: "*応答中…*", ephemeral: true })
                 .catch(console.error);
-            // await DiscordUtils.asyncReply(interaction.channel!, interaction.user, plainTextCommand)
-            //     .catch(console.error);
-        }
 
-        // 結果に基づき処理
-        this.processResultObj(result, client, interaction.user, interaction.channel!);
+            // --- コマンド解析 --- 
+            // 先に平文のコマンドでの動作を整備していたためそちらに合わせる。
+            // 平文のコマンドにコンバート
+            const { parsedCommand: cmd, mentionUsers } = await CommandParser.asyncFromInteraction(client, interaction);
+
+            let result: MyResult;
+            try {
+                result = await this.processPlaneTextCommand(cmd, interaction.user, interaction.channel!, mentionUsers, interaction);
+            }
+            finally {
+                await interaction.deleteReply()
+                    .catch(console.error);
+                // await DiscordUtils.asyncReply(interaction.channel!, interaction.user, plainTextCommand)
+                //     .catch(console.error);
+            }
+
+            // 結果に基づき処理
+            this.processResultObj(result, client, interaction.user, interaction.channel!);
+        }
+        else if (interaction.isContextMenuCommand() && isMyContextMenuCommand(interaction.commandName)) {
+            // Discord API の仕様上 3秒以内に何らかのレスポンスを返す必要あり
+            // 考え中的なレスポンスを返す
+            await interaction.reply({ content: "*応答中…*", ephemeral: true })
+                .catch(console.error);
+
+            let result: MyResult;
+            try {
+                result = await this.processContextMenuCommand(interaction.commandName, interaction);
+            }
+            finally {
+                await interaction.deleteReply()
+                    .catch(console.error);
+                // await DiscordUtils.asyncReply(interaction.channel!, interaction.user, plainTextCommand)
+                //     .catch(console.error);
+            }
+
+            // 結果に基づき処理
+            this.processResultObj(result, client, interaction.user, interaction.channel!);
+        }
     }
 
-    processMessage = async (client: Client, message: Message) => {
+    /**
+     * メッセージから来たコマンドの仕分け
+     * @param client 
+     * @param message 
+     * @returns 
+     */
+    processFromMessage = async (client: Client, message: Message) => {
         // 自分の反応やBOTの反応は無視する
         if (!DiscordUtils.isUnresponsiveMessage(client, message.author, message.guild, env.allowed_serv, false))
             return;
@@ -131,7 +176,14 @@ export class Controller {
         this.processResultObj(result, client, message.author, message.channel);
     }
 
-    processReaction = async (
+    /**
+     * リアクションに対する処理
+     * @param client 
+     * @param lastReaction 
+     * @param user 
+     * @returns 
+     */
+    processFromReaction = async (
         client: Client,
         lastReaction: MessageReaction | PartialMessageReaction,
         user: User | PartialUser
@@ -191,7 +243,54 @@ export class Controller {
         }
     }
 
-    processPlaneTextCommand = async (cmd: CommandParser, user: User, channel: TextBasedChannel, users: MyUser[]): Promise<MyResult> => {
+    /**
+     * コマンドに対する処理結果として生成したコマンドリストを処理する
+     * @param result 
+     * @param client 
+     * @param user 
+     * @param channel 
+     */
+    processResultObj = async (result: MyResult, client: Client, user: User, channel: TextBasedChannel) => {
+        // 順番に送信する前提で格納されている場合もあるので
+        // 送信ごとに待機する
+        let dmFailedUser: MyUser[] = []
+        for (const sendObj of result.sendList) {
+            switch (sendObj.type) {
+                case eSendType.sendReply:
+                    await DiscordUtils.asyncReply(channel, user, sendObj.sendMessage)
+                        .catch(console.error);
+                    break;
+                case eSendType.sendReplyByDM:
+                    await DiscordUtils.asyncDM(user, sendObj.sendMessage)
+                        .catch(e => DiscordUtils.asyncReply(channel, user, Utils.format(eMessage.C00_ReplyDMFailed,)))
+                        .catch(console.error);
+                    break;
+                case eSendType.sendDMByUserId:
+                    await DiscordUtils.asyncDM_fromUserId(client, sendObj.user.id, sendObj.sendMessage)
+                        .catch(e => dmFailedUser.push(sendObj.user));
+                    break;
+                case eSendType.sendSameChannel:
+                    await DiscordUtils.asyncSendToChannel(channel, sendObj.sendMessage)
+                        .catch(console.error);
+                    break;
+                case eSendType.sendOtherChannel:
+                    if (sendObj.targetChannel) {
+                        await DiscordUtils.asyncSendToChannel(sendObj.targetChannel, sendObj.sendMessage)
+                            .catch(console.error);
+                    }
+                    break;
+            }
+        }
+        if (dmFailedUser.length > 0) {
+            const unique = Utils.unique(dmFailedUser, v => v.id);
+            const memList = unique.map(u => "* " + u.name).join("\n").replace(/\n$/, "");
+            await DiscordUtils.asyncReply(channel, user, Utils.format(eMessage.C00_OtherDMFailed, memList))
+                .catch(console.error);
+        }
+    }
+
+    /* コマンドの実装 */
+    processPlaneTextCommand = async (cmd: CommandParser, user: User, channel: TextBasedChannel, users: MyUser[], interaction?: Interaction): Promise<MyResult> => {
         let isDM = DiscordUtils.isDM(channel);
         let sender: MyUser = {
             id: user.id,
@@ -215,44 +314,13 @@ export class Controller {
                 return await this.clearData(isDM, channel.id);
             case eCommands.TeamBuilder:
                 return await this.buildTeam(isDM, channel.id, channel, sender, cmd);
+            case eCommands.MessageCopy:
+                return await this.messageCopy(isDM, channel.client, channel, sender, cmd, interaction);
             default:
                 return {
                     status: MySuccess,
                     sendList: [],
                 };
-        }
-    }
-
-    processResultObj = async (result: MyResult, client: Client, user: User, channel: TextBasedChannel) => {
-        // 順番に送信する前提で格納されている場合もあるので
-        // 送信ごとに待機する
-        let dmFailedUser: MyUser[] = []
-        for (const sendObj of result.sendList) {
-            switch (sendObj.type) {
-                case eSendType.sendReply:
-                    await DiscordUtils.asyncReply(channel, user, sendObj.sendMessage)
-                        .catch(console.error);
-                    break;
-                case eSendType.sendReplyByDM:
-                    await DiscordUtils.asyncDM(user, sendObj.sendMessage)
-                        .catch(e => DiscordUtils.asyncReply(channel, user, Utils.format(eMessage.C00_ReplyDMFailed,)))
-                        .catch(console.error);
-                    break;
-                case eSendType.sendDMByUserId:
-                    await DiscordUtils.asyncDM_fromUserId(client, sendObj.user.id, sendObj.sendMessage)
-                        .catch(e => dmFailedUser.push(sendObj.user));
-                    break;
-                case eSendType.sendSameChannel:
-                    await DiscordUtils.asyncSendSameChannel(channel, sendObj.sendMessage)
-                        .catch(console.error);
-                    break;
-            }
-        }
-        if (dmFailedUser.length > 0) {
-            const unique = Utils.unique(dmFailedUser, v => v.id);
-            const memList = unique.map(u => "* " + u.name).join("\n").replace(/\n$/, "");
-            await DiscordUtils.asyncReply(channel, user, Utils.format(eMessage.C00_OtherDMFailed, memList))
-                .catch(console.error);
         }
     }
 
@@ -865,7 +933,6 @@ export class Controller {
         return MyFuncs.createSuccessReply(eMessage.C08_ClearMemberData,);
     }
 
-
     buildTeam = async (isDM: boolean, channelId: string, ch: Channel, sender: MyUser, cmd: CommandParser): Promise<MyResult> => {
         if (isDM) {
             // でもOK
@@ -949,6 +1016,189 @@ export class Controller {
         return MyFuncs.createSuccessSendSameChannel({ content: "チームを作りました", embeds: embeds, },);
     }
 
+    messageCopy = async (isDM: boolean, client: Client, ch: Channel, sender: MyUser, cmd: CommandParser, interaction?: Interaction): Promise<MyResult> => {
+        if (isDM) {
+            return MyFuncs.createErrorReply(eMessage.C00_NotAllowFromDM,);
+        }
+        // 上記とかぶるが、型チェックしておきたいので
+        if (ch.isDMBased()) {
+            return MyFuncs.createErrorReply(eMessage.C00_NotAllowFromDM,);
+        }
+
+        const selectedChannelId = cmd.getValue(0, 1)!;
+        const targetChannel = await client.channels.fetch(selectedChannelId);
+        if (!targetChannel) {
+            return MyFuncs.createErrorReply("チャンネルがありません。",);
+        }
+        if (!targetChannel.isTextBased()) {
+            return MyFuncs.createErrorReply("コピー先にはテキストチャンネルを指定してください。",);
+        }
+        if (!targetChannel.isTextBased()) {
+            return MyFuncs.createErrorReply("コピー先にはテキストチャンネルを指定してください。",);
+        }
+
+        let isDatetimeRange = cmd.existsOption(eCommandOptions.datetimeRange);
+        if (!isDatetimeRange) {
+            // メッセージリンク指定による単体メッセージのコピー
+            const messageLink = cmd.getValue(0, 2)!;
+            const regex = /https:\/\/discord\.com\/channels\/(\d+)\/(\d+)\/(\d+)/;
+
+            const match = messageLink.match(regex);
+            if (!match) {
+                return MyFuncs.createErrorReply("無効なリンクです。正しいメッセージリンクを入力してください。",);
+            }
+            const [, guildId, channelId, messageId] = match;
+            // このチェックを入れるかどうか…
+            // if (ch.guildId != guildId) {
+            //     return MyFuncs.createErrorReply("同じサーバー内のチャンネル内でのみコピーできます。",);
+            // }
+            let msg: Message<boolean>;
+            try {
+                const channel = await client.channels.fetch(channelId);
+                if (!channel?.isTextBased()) {
+                    throw new Error("テキストチャンネルではないためメッセージは取得できない。")
+                }
+                msg = await channel!.messages.fetch(messageId);
+            } catch (error) {
+                return MyFuncs.createErrorReply("指定されたメッセージを取得できませんでした。",);
+            }
+
+            // 型チェックをしたいだけ
+            if (msg.channel.isDMBased()) {
+                return MyFuncs.createErrorReply("DMチャンネルからは参照できません。",);
+            }
+
+            // メッセージを再投稿するコマンドリストを作成
+            return MyFuncs.createSuccessSendOtherChannel(targetChannel, {
+                embeds: [
+                    {
+                        author: {
+                            name: msg.author.username,
+                            icon_url: msg.author.displayAvatarURL(),
+                        },
+                        description: msg.content,
+                        color: 0x00ff00, // 任意の色
+                        timestamp: new Date().toString(),
+                        footer: {
+                            text: `チャンネル: #${msg.channel.name} | メッセージID: ${msg.id}`,
+                            icon_url: msg.guild!.iconURL()!,
+                        },
+                        fields: [
+                            {
+                                name: 'メッセージへのリンク',
+                                value: `[クリックして移動](https://discord.com/channels/${msg.guild!.id}/${msg.channel.id}/${msg.id})`,
+                            },
+                        ],
+                    },
+                ],
+                files: msg.attachments.map(attachment => attachment.url), //添付ファイルも含める
+                flags: MessageFlags.SuppressNotifications, // 大変うるさそうなので非通知属性を付ける
+            },);
+        }
+
+        // 日付範囲指定による複数メッセージのコピー
+
+        if (!interaction) {
+            return MyFuncs.createErrorReply("スラッシュコマンド専用コマンドです。",);
+        }
+
+        const errorRes: MyResult = {
+            status: MyError,
+            sendList: []
+        }
+
+        const res = await DateRangeModal.show(interaction);
+        if (!res) {
+            return errorRes;
+        }
+
+        const [from_ymd, from_hm, to_ymd, to_hm] = res;
+
+        const from = new Date(`${from_ymd}T${from_hm}:00+09:00`);
+        const to = new Date(`${to_ymd}T${to_hm}:00+09:00`);
+
+        function isValidDate(date: Date) {
+            return !isNaN(date.getTime());
+        }
+        if (!isValidDate(from)) {
+            return MyFuncs.createErrorReply("有効な開始日を入力してください。",);
+        }
+        if (!isValidDate(to)) {
+            return MyFuncs.createErrorReply("有効な終了日を入力してください。",);
+        }
+
+        if (!ch.isTextBased()) {
+            // コマンドが打たれている以上はありえないケースではある。
+            return MyFuncs.createErrorReply("テキストチャンネルで実行してください。",);
+        }
+
+        const messages = await ch.messages.fetch({ limit: 100 });
+        const from_t = from.getTime();
+        const to_t = to.getTime();
+        const filteredMessages = messages.filter(message => {
+            const messageTime = message.createdTimestamp;
+            return messageTime >= from_t && messageTime <= to_t;
+        });
+
+        // メッセージを再投稿するコマンドリストを作成
+        const sendlist = filteredMessages.map(msg => {
+            return MyFuncs.createSendOtherChannel(targetChannel, {
+                content: msg.content,
+                embeds: msg.embeds,
+                files: msg.attachments.map(attachment => attachment.url), //添付ファイルも含める
+                flags: MessageFlags.SuppressNotifications, // 大変うるさそうなので非通知属性を付ける
+            },);
+        })
+
+        return {
+            status: MySuccess,
+            sendList: sendlist,
+        }
+    }
+
+    /* コンテキストメニューの実装 */
+    processContextMenuCommand = async (cmd: eContextMenuCommands, interaction: Interaction): Promise<MyResult> => {
+        switch (cmd) {
+            case eContextMenuCommands.MessageDelete:
+                return await this.messageDelete_ctxmn(interaction);
+            default:
+                return {
+                    status: MySuccess,
+                    sendList: [],
+                };
+        }
+    }
+
+    messageDelete_ctxmn = async (interaction: Interaction): Promise<MyResult> => {
+        if (!interaction.isMessageContextMenuCommand()) {
+            return {
+                status: MyError,
+                sendList: [],
+            };
+        }
+        const targetMessage = interaction.targetMessage;
+
+        // ボットが送信したメッセージかどうかを確認
+        if (!targetMessage.author.bot) {
+            return MyFuncs.createErrorReply("MODが作成したメッセージではないため削除できません。",);
+        }
+
+        // 確認方式が微妙だったのでコメントアウト
+        // const yes = await DeleteConfirmModal.show(interaction);
+        // if (yes) {
+        //     await targetMessage.delete();
+        // }
+        await targetMessage.delete();
+
+        return {
+            status: MySuccess,
+            sendList: [],
+        };
+    }
+
+
+    /* 他Util */
+
     static Log = (msg: Message): void => {
         const isDM = DiscordUtils.isDM(msg.channel) ? "DM" : "not DM";
         console.log("Recept! msg:%s, sender:%s, DM?:%s", msg.content, msg.author.displayName, isDM)
@@ -969,7 +1219,7 @@ class MyFuncs {
         return msg;
     }
 
-    static createReply = (msg: eMessage | MessageContent, ...args: unknown[]): SendParams => {
+    static createReply = (msg: eMessage | MessageContent, ...args: unknown[]): SendListItem => {
         return {
             type: eSendType.sendReply,
             user: { id: "", name: "" },
@@ -977,7 +1227,7 @@ class MyFuncs {
         };
     }
 
-    static createReplyDM = (msg: eMessage | MessageContent, ...args: unknown[]): SendParams => {
+    static createReplyDM = (msg: eMessage | MessageContent, ...args: unknown[]): SendListItem => {
         return {
             type: eSendType.sendReplyByDM,
             user: { id: "", name: "" },
@@ -985,7 +1235,7 @@ class MyFuncs {
         };
     }
 
-    static createDMToOtherUser = (user: MyUser, msg: eMessage | MessageContent, ...args: unknown[]): SendParams => {
+    static createDMToOtherUser = (user: MyUser, msg: eMessage | MessageContent, ...args: unknown[]): SendListItem => {
         return {
             type: eSendType.sendDMByUserId,
             user: user,
@@ -993,7 +1243,7 @@ class MyFuncs {
         };
     }
 
-    static createSendSameChannel = (msg: eMessage | MessageContent, ...args: unknown[]): SendParams => {
+    static createSendSameChannel = (msg: eMessage | MessageContent, ...args: unknown[]): SendListItem => {
         return {
             type: eSendType.sendSameChannel,
             user: { id: "", name: "" },
@@ -1001,7 +1251,22 @@ class MyFuncs {
         };
     }
 
+    static createSendOtherChannel = (ch: TextBasedChannel, msg: eMessage | MessageContent, ...args: unknown[]): SendListItem => {
+        return {
+            type: eSendType.sendOtherChannel,
+            user: { id: "", name: "" },
+            sendMessage: MyFuncs.updateMessageContent(msg, ...args),
+            targetChannel: ch,
+        };
+    }
+
     static createErrorReply = (msg: eMessage | MessageContent, ...args: unknown[]): MyResult => {
+        if (typeof msg === "string") {
+            return {
+                status: MyError,
+                sendList: [MyFuncs.createReply({ content: msg, flags: MessageFlags.SuppressNotifications }, ...args)],
+            }
+        }
         return {
             status: MyError,
             sendList: [MyFuncs.createReply(msg, ...args)],
@@ -1017,6 +1282,12 @@ class MyFuncs {
         return {
             status: MySuccess,
             sendList: [MyFuncs.createSendSameChannel(msg, ...args)],
+        }
+    }
+    static createSuccessSendOtherChannel = (ch: TextBasedChannel, msg: eMessage | MessageContent, ...args: unknown[]): MyResult => {
+        return {
+            status: MySuccess,
+            sendList: [MyFuncs.createSendOtherChannel(ch, msg, ...args)],
         }
     }
     //#endregion

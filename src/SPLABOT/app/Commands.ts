@@ -4,23 +4,16 @@ import {
     Interaction,
     RESTPostAPIChatInputApplicationCommandsJSONBody,
     SlashCommandBuilder,
+    ContextMenuCommandBuilder,
+    ApplicationCommandType
 } from "discord.js";
 import "./DiscordExtentions";
 import { Utils } from "./Utilis";
 import { MemberRoleInfo, User as MyUser } from "./Model";
 import { TEAMBUILD_DEFAULT_NUM } from "./Const";
 
-// スラッシュコマンドは日本語に非対応……、不都合なことが多すぎないか…あっぁぁん？
-// export const eCommands = {
-//     Member: "/spjメンバー",
-//     SuggestRole: "/spjロール",
-//     SendRole: "/spjロールDM送信",
-//     CreateVote: "/spj投票",
-//     ClearData: "/spjクリア",
-// } as const;
-
 // スラッシュコマンドの仕様による制限（経験則）
-// 日本語だめ
+// 日本語だめ 不都合なことが多すぎないか…あっぁぁん？
 // 大文字だめ
 export const eCommands = {
     Member: "spj_member",
@@ -31,6 +24,7 @@ export const eCommands = {
     SendRoleOption: "spj_send_role_option",
     ClearMemberData: "spj_clear",
     TeamBuilder: "spj_team_build",
+    MessageCopy: "msg_copy",
 } as const;
 export type eCommands = (typeof eCommands)[keyof typeof eCommands];
 export const isMyCommand = (v: any): v is eCommands => Object.values(eCommands).some(elm => elm === v);
@@ -40,13 +34,16 @@ export const eCommandOptions = {
     show: "-show",
     add: "-add",
     delete: "-delete",
+    single: "-single",
+    datetimeRange: "--datetime-range",
 }
 export type eCommandOptions = (typeof eCommandOptions)[keyof typeof eCommandOptions];
 
 const SUPPORT_OPTION_LIST = [
     { command: eCommands.SuggestRole, opts: [eCommandOptions.nocheck] },
     { command: eCommands.Member, opts: [eCommandOptions.show, eCommandOptions.add, eCommandOptions.delete] },
-    { command: eCommands.EjectFromVote, opts: [eCommandOptions.show, eCommandOptions.add, eCommandOptions.delete] }
+    { command: eCommands.EjectFromVote, opts: [eCommandOptions.show, eCommandOptions.add, eCommandOptions.delete] },
+    { command: eCommands.MessageCopy, opts: [eCommandOptions.single, eCommandOptions.datetimeRange] },
 ];
 
 // スラッシュコマンドの型がガチガチ過ぎて、こちらの定義⇒discord.jsの定義への変換が
@@ -175,6 +172,34 @@ export const COMMAND_JSONBODYS: RESTPostAPIChatInputApplicationCommandsJSONBody[
             .setRequired(false)
         )
         .toJSON(),
+
+
+    new SlashCommandBuilder()
+        .setName(eCommands.MessageCopy)
+        .setDescription("メッセージを他のチャンネルにコピーします。")
+        .addSubcommand(subcmd => subcmd
+            .setName(eCommandOptions.single)
+            .setDescription("指定されたメッセージリンクのメッセージをコピーします。")
+            .addChannelOption(opt => opt
+                .setName('channel')
+                .setDescription('コピー先のチャンネルを選択してください。')
+                .setRequired(true))
+            .addStringOption(opt => opt
+                .setName("message_link")
+                .setDescription("コピーしたいメッセージのリンクをメッセージの右クリックからコピペしてください。")
+                .setRequired(true)
+            )
+        )
+        .addSubcommand(subcmd => subcmd
+            .setName(eCommandOptions.datetimeRange)
+            .setDescription("（スラッシュコマンド専用）コピー先のチャンネルを選択後、コピー対象とする日時範囲を指定するダイアログを表示します。")
+            .addChannelOption(opt => opt
+                .setName('channel')
+                .setDescription('コピー先のチャンネルを選択してください。')
+                .setRequired(true))
+        )
+        .toJSON(),
+
 ];
 
 /**
@@ -299,6 +324,36 @@ export class CommandParser {
                 case eCommands.TeamBuilder: {
                     if (opt.type == ApplicationCommandOptionType.Integer && opt.name == "count") {
                         plainTextCommand += " " + opt.value;
+                    }
+                }
+                case eCommands.MessageCopy: {
+                    if (opt.type == ApplicationCommandOptionType.Subcommand && opt.name == eCommandOptions.single) {
+                        plainTextCommand += " " + opt.name;
+                        if (!opt.options) {
+                            continue;
+                        }
+                        for (const subopt of opt.options) {
+                            if (subopt.type == ApplicationCommandOptionType.Channel) {
+                                plainTextCommand += " " + subopt.value;
+                            }
+                            if (subopt.type == ApplicationCommandOptionType.String) {
+                                plainTextCommand += " " + subopt.value;
+                            }
+                        }
+                    }
+                    if (opt.type == ApplicationCommandOptionType.Subcommand && opt.name == eCommandOptions.datetimeRange) {
+                        plainTextCommand += " " + opt.name;
+                        if (!opt.options) {
+                            continue;
+                        }
+                        for (const subopt of opt.options) {
+                            if (subopt.type == ApplicationCommandOptionType.Channel) {
+                                plainTextCommand += " " + subopt.value;
+                            }
+                            if (subopt.type == ApplicationCommandOptionType.String) {
+                                plainTextCommand += " " + subopt.value;
+                            }
+                        }
                     }
                 }
                     break;
