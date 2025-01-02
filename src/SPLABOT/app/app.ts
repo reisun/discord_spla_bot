@@ -4,6 +4,7 @@ import {
     // ↓ discord WebAPI
     REST, Routes,
 } from 'discord.js';
+import "./DiscordExtentions";
 import { Controller } from "./Control";
 import { COMMAND_JSONBODYS } from "./Commands";
 import { CONTEXTMENU_JSONBODYS } from "./ContextMenuCommands";
@@ -24,6 +25,9 @@ const client = new Client({
     // https://stackoverflow.com/questions/68700270/event-messagecreate-not-firing-emitting-when-i-send-a-dm-to-my-bot-discord-js-v
     partials: [Partials.Channel],
 });
+// 
+client.processingTaskCount = 0;
+
 const rest = new REST({
     version: '10'
 });
@@ -95,10 +99,14 @@ client.on(Events.MessageCreate, async message => {
         return;
     }
     try {
+        client.processingTaskCount ++;
         await controller.processFromMessage(client, message);
     }
     catch (e) {
         console.log(e);
+    }
+    finally {
+        client.processingTaskCount --;
     }
 });
 
@@ -108,6 +116,7 @@ client.on(Events.InteractionCreate, async interaction => {
         return;
     }
     try {
+        client.processingTaskCount ++;
         if (!interaction.isModalSubmit()) {
             await controller.processFromInteraction(client, interaction);
         }
@@ -117,6 +126,9 @@ client.on(Events.InteractionCreate, async interaction => {
     }
     catch (e) {
         console.log(e);
+    }
+    finally {
+        client.processingTaskCount --;
     }
 });
 

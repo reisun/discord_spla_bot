@@ -1,10 +1,9 @@
 import { MongoClient, Collection, ObjectId, MatchKeysAndValues } from 'mongodb'
 import { Result, ResultOK, ResultUtil } from './Result';
 import { eMessage } from './Const';
-import { SplaJinroData, SplaJinroDataVersion, User } from "./Model";
+import { SplaJinroData, SplaJinroDataVersion, User, WorkData } from "./Model";
 
 const MONGODB_URI = 'mongodb://root:example@mongodb:27017/appData?authSource=admin'
-
 
 export class DBUtils {
   static createNewSplaJinroDataObj = (channelId: string): SplaJinroData => {
@@ -25,6 +24,7 @@ export class DBUtils {
 export class DBAccesser {
   private constructor(
     public SplaJinroData: Collection<SplaJinroData>,
+    public WorkData: Collection<WorkData>,
   ) {
   }
 
@@ -33,6 +33,7 @@ export class DBAccesser {
     const db = client.db('appData');
     return new DBAccesser(
       db.collection<SplaJinroData>('SplaJinroData'),
+      db.collection<WorkData>("WorkData"),
     );
   }
 
@@ -96,4 +97,37 @@ export class DBAccesser {
     }
     return true;
   }
+
+  async asyncClearWorkData(): Promise<boolean> {
+    const delRet = await this.WorkData.deleteMany({});
+    if (!delRet.acknowledged) {
+      return false;
+    }
+    return true;
+  }
+  async asyncInsertWorkData(WorkDataList: WorkData[]): Promise<boolean> {
+    const insRet = (await this.WorkData.insertMany(WorkDataList));
+    if (!insRet.acknowledged) {
+      return false;
+    }
+    return true;
+  }
+  async asyncSelectWorkDataForEach(uuid: string, asc: boolean, func: (data: WorkData) => Promise<void>): Promise<void> {
+    const query = { process_uuid: uuid };
+    const cursor = this.WorkData.find(query).sort({ sorter: asc ? 1 : -1 });
+    while(await cursor.hasNext()) {
+      const data = await cursor.next();
+      if (data) {
+        await func(data);
+      }
+    }
+  }
+  async asyncDeleteWorkData(uuid: string): Promise<boolean> {
+    const delRet = await this.WorkData.deleteMany({process_uuid: uuid});
+    if (!delRet.acknowledged) {
+      return false;
+    }
+    return true;
+  }
+
 }

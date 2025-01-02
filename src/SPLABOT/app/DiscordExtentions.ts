@@ -2,6 +2,7 @@
     SlashCommandBuilder,
     SlashCommandSubcommandBuilder,
     SlashCommandOptionsOnlyBuilder,
+    Client,
 } from "discord.js"
 
 // 拡張メソッドI/F定義
@@ -22,6 +23,9 @@ declare module 'discord.js' {
     interface SlashCommandBuilder extends ForEachExtension<SlashCommandBuilder> { }
     interface SlashCommandSubcommandBuilder extends ForEachExtension<SlashCommandSubcommandBuilder> { }
     interface SlashCommandOptionsOnlyBuilder extends ForEachExtension<SlashCommandOptionsOnlyBuilder> { }
+    interface Client {
+        processingTaskCount: number,
+    }
 };
 
 // 共通のforEachメソッドの実装

@@ -32,3 +32,10 @@ export type MemberRoleOptionCanKnow = {
   complement: string,
 }
 export type SendMemberRoleOption = MemberRoleOptionCanKnow /* | その他の型 */;
+
+
+export type WorkData = {
+  process_uuid: string,
+  sorter: number,
+  data: any,
+}

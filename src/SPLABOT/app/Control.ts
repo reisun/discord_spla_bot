@@ -12,22 +12,24 @@ import {
     PartialUser,
     APIEmbed,
     MessageFlags,
-    InteractionWebhook
+    InteractionWebhook,
+    Collection
 } from 'discord.js';
 import env from "../inc/env.json";
 import { MAX_MEMBER_COUNT, ALPHABET_TABLE, eMessage, SPACE_REGXg, TEAMBUILD_DEFAULT_NUM } from "./Const";
-import { User as MyUser, SendMemberRoleOption, SplaJinroData } from "./Model";
+import { User as MyUser, SendMemberRoleOption, SplaJinroData, WorkData } from "./Model";
 import { eCommandOptions, eCommands, isMyCommand, CommandParser } from "./Commands"
 import { Utils } from "./Utilis";
 import { DiscordUtils, MessageContent } from "./DiscordUtils";
 import { DBAccesser, DBUtils } from "./db";
 import { ResultOK } from './Result';
 import { eContextMenuCommands, isMyContextMenuCommand } from './ContextMenuCommands';
-import {
-    DateRangeModal,
-    // DeleteConfirmModal, 
-    // WarnningModal,
-} from './CustomUI';
+// import {
+//     DateRangeModal,
+//     DeleteConfirmModal, 
+//     WarnningModal,
+// } from './CustomUI';
+import { v4 as uuidv4 } from "uuid";
 
 // 操作者の確認、作業を飛ばすコマンドが欲しい？
 //       ⇒ むしろこちらをデフォルトにしたい…が、つまりそれはGMをBOTがやるということになり
@@ -95,6 +97,8 @@ export class Controller {
     asyncSetup = async () => {
         this._dbAccesser = await DBAccesser.connect();
         console.log('bot MyDB connected!');
+        this._dbAccesser.asyncClearWorkData();
+        console.log('workdata cleared!');
     }
 
     /**
@@ -1115,10 +1119,10 @@ export class Controller {
         // }
 
         const [from_ymd, from_hm, to_ymd, to_hm] = [
-            cmd.getValue(0,2)!,
-            cmd.getValue(0,3)!,
-            cmd.getValue(0,4)!,
-            cmd.getValue(0,5)!,
+            cmd.getValue(0, 2)!,
+            cmd.getValue(0, 3)!,
+            cmd.getValue(0, 4)!,
+            cmd.getValue(0, 5)!,
         ];
 
         const from = new Date(`${from_ymd}T${from_hm}:00+09:00`);
@@ -1139,41 +1143,108 @@ export class Controller {
             return MyFuncs.createErrorReply("テキストチャンネルで実行してください。",);
         }
 
-        const messages = await ch.messages.fetch({ limit: 100 });
-        const from_t = from.getTime();
-        const to_t = to.getTime();
-        const filteredMessages = messages.filter(message => {
-            const messageTime = message.createdTimestamp;
-            return from_t <= messageTime && messageTime <= to_t;
-        });
-
-        // メッセージを再投稿するコマンドリストを作成
-        const sendlist = filteredMessages.map(msg => {
-            // 添付ファイルの処理
-            const attachments = msg.attachments.map(attachment => attachment.url);
-            // メッセージを再投稿するコマンドリストを作成
-            return MyFuncs.createSendOtherChannel(targetChannel, {
-                embeds: [
-                    {
-                        author: {
-                            name: msg.member?.displayName ?? msg.author.username,
-                            icon_url: msg.author.displayAvatarURL(),
-                        },
-                        description: msg.content,
-                        color: 0x00ff00, // 任意の色
-                        timestamp: new Date(msg.createdTimestamp).toISOString(),
-                        fields: [
-                            {
-                                name: '\u200B', // 空白文字
-                                value: `[クリックして移動](https://discord.com/channels/${msg.guild!.id}/${msg.channel.id}/${msg.id})`,
+        // メッセージの取得上限が100件、また、並び順が最新からになるため以下の手順で保存する。
+        // メッセージを取得⇒DBに保存を繰り返す⇒
+        // DBから並び替えを行って100件ずつ取得⇒同じ人のメッセージはグループ化⇒制限に引っかからないペースで登録
+        const uuid = uuidv4();
+        // 以下 tyr-catch での成果物（送信メッセージリスト）
+        const sendlist: SendListItem[] = [];
+        try {
+            // メッセージを取得⇒DBに保存を繰り返す
+            {
+                const from_t = from.getTime();
+                const to_t = to.getTime();
+                let messages: Collection<string, Message<true>> = await ch.messages.fetch({ limit: 100 });
+                const needLoop = () => (messages.size == 0 || messages.some(msg => (from_t <= msg.createdTimestamp)));
+                while (needLoop()) {
+                    const filteredMessages = messages.filter(msg => (from_t <= msg.createdTimestamp && msg.createdTimestamp <= to_t));
+                    const records = filteredMessages.map((msg) => {
+                        // 添付ファイルの処理
+                        const attachments = msg.attachments.map(attachment => attachment.url);
+                        // DBのレコードに保存
+                        const record: WorkData = {
+                            process_uuid: uuid,
+                            sorter: new Date(msg.createdTimestamp).getTime(),
+                            data: {
+                                author: {
+                                    name: msg.member?.displayName ?? msg.author.displayName ?? msg.author.username,
+                                    icon_url: msg.author.displayAvatarURL(),
+                                },
+                                description: msg.content,
+                                timestamp: new Date(msg.createdTimestamp).toISOString(),
+                                fields: [
+                                    {
+                                        name: '\u200B', // 空白文字
+                                        value: `[クリックして移動](https://discord.com/channels/${msg.guild!.id}/${msg.channel.id}/${msg.id})`,
+                                    }
+                                ],
+                                image: attachments.length > 0 ? { url: attachments[0] } : undefined, // 1つ目の添付ファイルを代表で画像として埋め込む
                             }
-                        ],
-                        image: attachments.length > 0 ? { url: attachments[0] } : undefined, // 1つ目の添付ファイルを代表で画像として埋め込む
-                    },
-                ],
-                flags: MessageFlags.SuppressNotifications, // 大変うるさそうなので非通知属性を付ける
-            },);
-        });
+                        };
+                        return record;
+                    });
+                    if (records.length > 0) {
+                        await this._dbAccesser?.asyncInsertWorkData(records);
+                    }
+                    messages = await ch.messages.fetch({ before: messages.lastKey(), limit: 100 });
+                }
+            }
+            // DBから並び替えを行って取得⇒同じ人のメッセージはグループ化⇒制限に引っかからないように100件ペースで登録
+            let groupBy: WorkData[] = [];
+            const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
+            const asyncPushAndGroupByResetAndSleep = async () => {
+                sendlist.push(MyFuncs.createSendOtherChannel(targetChannel, {
+                    embeds: [
+                        {
+                            author: groupBy[0].data.author,
+                            // 同じ人のメッセージはグループ化
+                            description: groupBy.map(v=>v.data.description).join("\r\n"),
+                            timestamp: groupBy[0].data.timestamp,
+                            fields: groupBy[0].data.fields,
+                            image: groupBy.slice(-1)[0].data.image,
+                        },
+                    ],
+                    flags: MessageFlags.SuppressNotifications, // 大変うるさそうなので非通知属性を付ける
+                    addAction: async () => { delay(20); return; } // リクエスト過多にならないよう考慮
+                },));
+                groupBy = [];
+            }
+            await this._dbAccesser?.asyncSelectWorkDataForEach(uuid, true, async (record) => {
+                if (groupBy.length > 0 && groupBy[0].data.author.icon_url !== record.data.author.icon_url) {
+                    // 投稿者が変わるなら登録して、グループ集計を解放
+                    await asyncPushAndGroupByResetAndSleep();
+                    groupBy.push(record);
+                    return;
+                }
+                if (groupBy.length > 0 && groupBy.slice(-1)[0].data.image != null) {
+                    // 投稿者が同じでも画像が投稿されているならそこまでで登録して、グループ集計を解放
+                    await asyncPushAndGroupByResetAndSleep();
+                    groupBy.push(record);
+                    return;
+                }
+                if(groupBy.length > 0 && groupBy.length > 100) {
+                    // リクエストのサイズが大きくなるのでいったん登録。グループが途切れるのはやむなしとする
+                    groupBy.push(record);
+                    await asyncPushAndGroupByResetAndSleep();
+                    return;
+                }
+                if(groupBy.length > 0) {
+                    // icon_url == icon_url && groupBy.length <= 100
+                    groupBy.push(record);
+                    return;
+                }
+                // groupBy.length == 0
+                groupBy.push(record);
+            });
+            // 最後にグループ集計が残っている場合を考慮
+            if (groupBy.length > 0) {
+                await asyncPushAndGroupByResetAndSleep();
+            }
+        }
+        finally {
+            // 作業用DBの削除漏れが無いようにする
+            await this._dbAccesser?.asyncDeleteWorkData(uuid);
+        }
 
         return {
             status: MySuccess,
